@@ -7,11 +7,11 @@ it fast and easy to:
 
   `gwt`
 
-- Change directory to a branch+worktree
+- Change directory to a branch+worktree [in the current repo]
 
   `gwt branch-name` (supports tab completion of existing branch+worktrees)
 
-- Create a new branch+worktree
+- Create a new branch+worktree [in the current repo]
 
   `gwt new branch-name`
 
@@ -19,6 +19,8 @@ it fast and easy to:
 
   `gwt repo /some/other/repo.git`
 
+The "current repo" is stored in `$GWT_GIT_DIR` and a default value
+can be initialized in your `.bashrc`.
 
 ### TODO
 
