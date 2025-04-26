@@ -20,6 +20,12 @@ it fast and easy to:
   `gwt repo /some/other/repo.git`
 
 
+### TODO
+
+- Allow registration of setup scripts for new worktrees (e.g.,
+  create `.env` files, install `node`, etc.)
+- Safe removal of branch+worktrees
+
 ## Background: bare repositories
 
 `gwt` makes some assumptions about your repository and worktree directory
