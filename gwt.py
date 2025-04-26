@@ -63,7 +63,7 @@ def main():
 
     # Create a 'new' subcommand
     new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
-    new_parser.add_argument("branch", help="Name of the new branch")
+    new_parser.add_argument("new_branch", help="Name of the new branch")
 
     # Create a 'repo' subcommand
     repo_parser = subparsers.add_parser("repo", help="Set the git directory")
@@ -74,12 +74,12 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "new" and hasattr(args, 'branch') and args.branch:
-        create_branch_and_worktree(args.branch)
-    elif args.command == "repo" and hasattr(args, 'git_dir') and args.git_dir:
+    if args.command == "new":
+        create_branch_and_worktree(args.new_branch)
+    elif args.command == "repo":
         # Just print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
-    elif hasattr(args, 'branch') and args.branch and args.command is None:
+    elif args.branch and args.command is None:
         switch_to_worktree(args.branch)
     else:
         list_worktrees()
