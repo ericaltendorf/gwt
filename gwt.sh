@@ -9,13 +9,13 @@ _gwt_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="new repo"
+    commands="--new --repo"
 
     # Handle subcommands
-    if [[ ${prev} == "new" ]]; then
+    if [[ ${prev} == "--new" ]]; then
         # No specific completions for new since it expects a new branch name
         return 0
-    elif [[ ${prev} == "repo" ]]; then
+    elif [[ ${prev} == "--repo" ]]; then
         # Use directory completion for repo
         COMPREPLY=( $(compgen -d -- "${cur}") )
         return 0

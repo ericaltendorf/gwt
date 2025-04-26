@@ -61,12 +61,12 @@ def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Create a 'new' subcommand
-    new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
+    # Create a '--new' subcommand
+    new_parser = subparsers.add_parser("--new", help="Create a new branch and worktree")
     new_parser.add_argument("new_branch", help="Name of the new branch")
 
-    # Create a 'repo' subcommand
-    repo_parser = subparsers.add_parser("repo", help="Set the git directory")
+    # Create a '--repo' subcommand
+    repo_parser = subparsers.add_parser("--repo", help="Set the git directory")
     repo_parser.add_argument("git_dir", help="Path to the git directory")
 
     # Keep the original positional argument for simple branch switching
@@ -74,9 +74,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "new":
+    if args.command == "--new":
         create_branch_and_worktree(args.new_branch)
-    elif args.command == "repo":
+    elif args.command == "--repo":
         # Just print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
     elif args.branch and args.command is None:
