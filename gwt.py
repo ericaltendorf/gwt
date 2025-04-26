@@ -59,14 +59,27 @@ def list_worktrees():
 
 def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
-    parser.add_argument("-a", metavar="BRANCH", help="Create a new branch and worktree")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # Create a 'new' subcommand
+    new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
+    new_parser.add_argument("branch", help="Name of the new branch")
+
+    # Create a 'repo' subcommand
+    repo_parser = subparsers.add_parser("repo", help="Set the git directory")
+    repo_parser.add_argument("git_dir", help="Path to the git directory")
+
+    # Keep the original positional argument for simple branch switching
     parser.add_argument("branch", nargs="?", help="Switch to existing branch worktree")
 
     args = parser.parse_args()
 
-    if args.a:
-        create_branch_and_worktree(args.a)
-    elif args.branch:
+    if args.command == "new" and hasattr(args, 'branch') and args.branch:
+        create_branch_and_worktree(args.branch)
+    elif args.command == "repo" and hasattr(args, 'git_dir') and args.git_dir:
+        # Just print a message for the shell script to handle
+        print(f"GWT_GIT_DIR={args.git_dir}")
+    elif hasattr(args, 'branch') and args.branch and args.command is None:
         switch_to_worktree(args.branch)
     else:
         list_worktrees()

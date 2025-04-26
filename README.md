@@ -13,11 +13,11 @@ it fast and easy to:
 
 - Create a new branch+worktree
 
-  `gwt -a branch-name`
+  `gwt new branch-name`
 
 - Switch to a different repo
 
-  `gwt --set-git-dir /some/other/repo.git`
+  `gwt repo /some/other/repo.git`
 
 
 ## Background: bare repositories
@@ -92,7 +92,7 @@ can re-set that dir manually or using `gwt` itself:
 export GWT_GIT_DIR=/path/to/your/repo.git
 
 # Method 2: Use the built-in command
-gwt --set-git-dir /path/to/your/repo.git
+gwt repo /path/to/your/repo.git
 ```
 
 
@@ -105,7 +105,7 @@ gwt
 
 Create a new branch and worktree:
 ```
-gwt -a new-branch-name
+gwt new branch-name
 ```
 
 Switch to an existing worktree:
@@ -115,7 +115,7 @@ gwt branch-name
 
 Set the git directory for future commands:
 ```
-gwt --set-git-dir /path/to/another/repo.git
+gwt repo /path/to/another/repo.git
 ```
 
 ## How it works
