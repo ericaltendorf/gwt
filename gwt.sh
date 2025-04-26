@@ -9,31 +9,51 @@ _gwt_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="--new --repo"
+    commands="new repo switch s list ls l"
+    
+    # Don't use file completion as a fallback
+    compopt -o nospace
 
-    # Handle subcommands
-    if [[ ${prev} == "--new" ]]; then
-        # No specific completions for new since it expects a new branch name
-        return 0
-    elif [[ ${prev} == "--repo" ]]; then
-        # Use directory completion for repo
-        COMPREPLY=( $(compgen -d -- "${cur}") )
+    # For the first argument (position 1), complete with commands
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
     fi
 
-    # Complete commands or branch names if it's the first word
-    if [[ ${COMP_CWORD} -eq 1 ]]; then        
-        # If GWT_GIT_DIR is not set, only complete commands
-        if [ -z "$GWT_GIT_DIR" ]; then
-            COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
-            return 0
-        fi
-        
-        # Get list of branches that have worktrees
-        local worktrees=$(git --git-dir="$GWT_GIT_DIR" worktree list | awk '{print $3}' | sed 's/\[//' | sed 's/\]//' | grep -v '(detached)')
-        COMPREPLY=( $(compgen -W "${commands} ${worktrees}" -- "${cur}") )
-        return 0
+    # For position 2, handle specific subcommand completions
+    if [[ ${COMP_CWORD} -eq 2 ]]; then
+        case "${prev}" in
+            new)
+                # No specific completions for new since it expects a new branch name
+                return 0
+                ;;
+            repo)
+                # Use directory completion for repo command
+                compopt -o filenames
+                COMPREPLY=( $(compgen -d -- "${cur}") )
+                return 0
+                ;;
+            switch|s)
+                # Only complete with branch names if GWT_GIT_DIR is set
+                if [ -n "$GWT_GIT_DIR" ] && [ -d "$GWT_GIT_DIR" ]; then
+                    local worktrees=$(git --git-dir="$GWT_GIT_DIR" worktree list 2>/dev/null | awk '{print $3}' | sed 's/\[//' | sed 's/\]//' | grep -v '(detached)')
+                    COMPREPLY=( $(compgen -W "${worktrees}" -- "${cur}") )
+                fi
+                return 0
+                ;;
+            list|ls|l)
+                # No completions needed for list commands
+                return 0
+                ;;
+            *)
+                # No completions for unknown commands
+                return 0
+                ;;
+        esac
     fi
+
+    # Default: no completions for other positions
+    return 0
 }
 
 # Function to handle all gwt operations

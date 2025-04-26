@@ -39,5 +39,5 @@ if [ -n "$default_git_dir" ]; then
   echo "Default GWT_GIT_DIR has been set to: $default_git_dir"
 else
   echo "Remember to set GWT_GIT_DIR before using gwt:"
-  echo "  gwt --set-git-dir /path/to/your/repo.git"
+  echo "  gwt repo /path/to/your/repo.git"
 fi

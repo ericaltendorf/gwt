@@ -5,19 +5,21 @@ it fast and easy to:
 
 - See all existing branch+worktrees in the current repo
 
-  `gwt`
+  `gwt` or `gwt list` or `gwt ls`
 
 - Change directory to a branch+worktree [in the current repo]
 
-  `gwt branch-name` (supports tab completion of existing branch+worktrees)
+  `gwt switch branch-name` or `gwt s branch-name` 
+  
+  (supports tab completion of existing branch+worktrees)
 
 - Create a new branch+worktree [in the current repo]
 
-  `gwt --new branch-name`
+  `gwt new branch-name`
 
 - Switch to a different repo
 
-  `gwt --repo /some/other/repo.git`
+  `gwt repo /some/other/repo.git`
 
 The "current repo" is stored in `$GWT_GIT_DIR` and a default value
 can be initialized in your `.bashrc`.
@@ -100,7 +102,7 @@ can re-set that dir manually or using `gwt` itself:
 export GWT_GIT_DIR=/path/to/your/repo.git
 
 # Method 2: Use the built-in command
-gwt --repo /path/to/your/repo.git
+gwt repo /path/to/your/repo.git
 ```
 
 
@@ -109,21 +111,24 @@ gwt --repo /path/to/your/repo.git
 List all worktrees:
 ```
 gwt
+gwt list
+gwt ls
 ```
 
 Create a new branch and worktree:
 ```
-gwt --new branch-name
+gwt new branch-name
 ```
 
 Switch to an existing worktree:
 ```
-gwt branch-name
+gwt switch branch-name
+gwt s branch-name
 ```
 
 Set the git directory for future commands:
 ```
-gwt --repo /path/to/another/repo.git
+gwt repo /path/to/another/repo.git
 ```
 
 ## How it works
