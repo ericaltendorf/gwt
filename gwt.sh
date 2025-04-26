@@ -9,7 +9,7 @@ _gwt_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="new repo switch s list ls l"
+    commands="new repo switch s list ls l remove rm"
     
     # Don't use file completion as a fallback
     compopt -o nospace
@@ -33,7 +33,7 @@ _gwt_completions() {
                 COMPREPLY=( $(compgen -d -- "${cur}") )
                 return 0
                 ;;
-            switch|s)
+            switch|s|remove|rm)
                 # Only complete with branch names if GWT_GIT_DIR is set
                 if [ -n "$GWT_GIT_DIR" ] && [ -d "$GWT_GIT_DIR" ]; then
                     local worktrees=$(git --git-dir="$GWT_GIT_DIR" worktree list 2>/dev/null | awk '{print $3}' | sed 's/\[//' | sed 's/\]//' | grep -v '(detached)')

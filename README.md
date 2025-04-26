@@ -1,5 +1,7 @@
 # Git Worktree Tool (gwt)
 
+(this is very new untested code -- please report bugs)
+
 An opinionated tool for rapidly working in git worktrees.  `gwt` makes
 it fast and easy to:
 
@@ -17,6 +19,10 @@ it fast and easy to:
 
   `gwt new branch-name`
 
+- Remove a worktree and optionally its branch
+
+  `gwt remove branch-name` or `gwt rm branch-name`
+
 - Switch to a different repo
 
   `gwt repo /some/other/repo.git`
@@ -28,7 +34,6 @@ can be initialized in your `.bashrc`.
 
 - Allow registration of setup scripts for new worktrees (e.g.,
   create `.env` files, install `node`, etc.)
-- Safe removal of branch+worktrees
 
 ## Background: bare repositories
 
@@ -129,6 +134,12 @@ gwt s branch-name
 Set the git directory for future commands:
 ```
 gwt repo /path/to/another/repo.git
+```
+
+Remove a worktree and optionally its branch:
+```
+gwt remove branch-name
+gwt rm branch-name
 ```
 
 ## How it works

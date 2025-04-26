@@ -51,6 +51,42 @@ def list_worktrees(git_dir):
     except subprocess.CalledProcessError as e:
         print(f"Error listing worktrees: {e}", file=sys.stderr)
         sys.exit(1)
+        
+        
+def remove_worktree(branch_name, git_dir):
+    try:
+        # First find the worktree path
+        result = subprocess.run(
+            ["git", f"--git-dir={git_dir}", "worktree", "list"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        
+        # Parse the output to find the worktree for this branch
+        worktree_path = None
+        for line in result.stdout.splitlines():
+            if f"[{branch_name}]" in line:
+                worktree_path = line.split()[0]
+                break
+        
+        if not worktree_path:
+            print(f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr)
+            sys.exit(1)
+        
+        # Remove the worktree
+        run_git_command(["worktree", "remove", worktree_path], git_dir)
+        
+        # Then remove the branch if the user confirms
+        confirm = input(f"Do you also want to delete the branch '{branch_name}'? (y/N): ")
+        if confirm.lower() == 'y':
+            run_git_command(["branch", "-D", branch_name], git_dir)
+            print(f"Branch '{branch_name}' has been deleted")
+        
+        print(f"Worktree for '{branch_name}' has been removed")
+    except subprocess.CalledProcessError as e:
+        print(f"Error removing worktree: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main():
@@ -68,6 +104,10 @@ def main():
     # Create a 'switch' subcommand with 's' as alias
     switch_parser = subparsers.add_parser("switch", aliases=["s"], help="Switch to existing branch worktree")
     switch_parser.add_argument("branch_name", help="Name of the branch to switch to")
+    
+    # Create a 'remove' subcommand with 'rm' as alias
+    remove_parser = subparsers.add_parser("remove", aliases=["rm"], help="Remove a worktree and optionally its branch")
+    remove_parser.add_argument("branch_name", help="Name of the branch worktree to remove")
     
     # Create a 'list' subcommand that's implicit if no command is provided
     list_parser = subparsers.add_parser("list", aliases=["ls", "l"], help="List all worktrees")
@@ -96,6 +136,8 @@ def main():
         create_branch_and_worktree(args.branch_name, git_dir)
     elif args.command in ["switch", "s"]:
         switch_to_worktree(args.branch_name, git_dir)
+    elif args.command in ["remove", "rm"]:
+        remove_worktree(args.branch_name, git_dir)
     elif args.command in ["list", "ls", "l"]:
         list_worktrees(git_dir)
 
