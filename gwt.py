@@ -58,26 +58,17 @@ def switch_to_worktree(branch_name, git_dir):
     worktree_path = os.path.join(worktree_base, branch_name)
     
     if not os.path.isdir(worktree_path):
-        # Try to find the worktree using git worktree list
-        try:
-            result = subprocess.run(
-                ["git", f"--git-dir={git_dir}", "worktree", "list"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            
-            # Check if the branch exists but is in a different location
-            for line in result.stdout.splitlines():
-                if f"[{branch_name}]" in line:
-                    worktree_path = line.split()[0]
-                    break
-            else:
-                # Branch not found in any worktree
-                print(f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr)
-                sys.exit(1)
-        except subprocess.CalledProcessError as e:
-            print(f"Error: {e}", file=sys.stderr)
+        # Try to find the worktree using our shared function
+        worktrees = get_worktree_list(git_dir)
+        
+        # Check if the branch exists but is in a different location
+        for worktree in worktrees:
+            if worktree['branch'] == branch_name:
+                worktree_path = worktree['path']
+                break
+        else:
+            # Branch not found in any worktree
+            print(f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr)
             sys.exit(1)
 
     # Print the command to change directory
@@ -85,7 +76,50 @@ def switch_to_worktree(branch_name, git_dir):
     print(f"cd {worktree_path}")
 
 
+def get_worktree_list(git_dir):
+    """Get a list of all worktrees for the repository.
+    
+    Returns a list of dicts with 'path' and 'branch' keys.
+    """
+    try:
+        result = subprocess.run(
+            ["git", f"--git-dir={git_dir}", "worktree", "list"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        
+        worktrees = []
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                path = parts[0]
+                branch_info = parts[2]
+                # Extract branch name from [branch] format
+                branch = branch_info.strip('[]')
+                # Skip detached HEAD worktrees
+                if branch != '(detached)' and not branch.startswith('(HEAD'):
+                    worktrees.append({
+                        'path': path,
+                        'branch': branch
+                    })
+        
+        return worktrees
+    except subprocess.CalledProcessError as e:
+        print(f"Error listing worktrees: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def list_worktrees(git_dir):
+    """Display list of worktrees to the user."""
+    # Get worktrees using our shared function
+    worktrees = get_worktree_list(git_dir)
+    
+    if not worktrees:
+        print("No worktrees found")
+        return
+    
+    # Display the full worktree list using the git command for consistent output
     try:
         result = subprocess.run(
             ["git", f"--git-dir={git_dir}", "worktree", "list"],
@@ -101,19 +135,14 @@ def list_worktrees(git_dir):
         
 def remove_worktree(branch_name, git_dir):
     try:
-        # First find the worktree path
-        result = subprocess.run(
-            ["git", f"--git-dir={git_dir}", "worktree", "list"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        # Find the worktree path using our shared function
+        worktrees = get_worktree_list(git_dir)
         
-        # Parse the output to find the worktree for this branch
+        # Find the worktree for this branch
         worktree_path = None
-        for line in result.stdout.splitlines():
-            if f"[{branch_name}]" in line:
-                worktree_path = line.split()[0]
+        for worktree in worktrees:
+            if worktree['branch'] == branch_name:
+                worktree_path = worktree['path']
                 break
         
         if not worktree_path:
@@ -157,6 +186,8 @@ def main():
     
     # Create a 'list' subcommand that's implicit if no command is provided
     list_parser = subparsers.add_parser("list", aliases=["ls", "l"], help="List all worktrees")
+    list_parser.add_argument("--branches", action="store_true", help="List only branch names (for tab completion)")
+    list_parser.add_argument("--paths", action="store_true", help="List only paths (for scripts)")
     
     args = parser.parse_args()
 
