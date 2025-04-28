@@ -46,7 +46,11 @@ def create_branch_and_worktree(branch_name, git_dir):
         # Add worktree
         worktree_path = os.path.join(worktree_base, branch_name)
         run_git_command(["worktree", "add", worktree_path, branch_name], git_dir)
-        print(f"Created branch '{branch_name}' and worktree at {worktree_path}")
+        print(f"Created branch '{branch_name}' and worktree at {worktree_path}", file=sys.stderr)
+        
+        # Print the command to change directory
+        # The calling shell script will parse this and execute the cd
+        print(f"cd {worktree_path}")
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
