@@ -8,13 +8,9 @@ _gwt_get_branches() {
     # Function to get list of branch names with worktrees
     # Only run if GWT_GIT_DIR is set and valid
     if [ -n "$GWT_GIT_DIR" ] && [ -d "$GWT_GIT_DIR" ]; then
-        # Get branch names from worktree list
-        git --git-dir="$GWT_GIT_DIR" worktree list 2>/dev/null | 
-            awk '{print $3}' | 
-            sed 's/\[//' | 
-            sed 's/\]//' | 
-            grep -v '(detached)' |
-            grep -v 'HEAD'
+        # Use the Python script to get branch names
+        # The script will handle all the verification and comparison
+        "$PYTHON_SCRIPT" list --branches
     fi
 }
 

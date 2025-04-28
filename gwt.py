@@ -76,11 +76,12 @@ def switch_to_worktree(branch_name, git_dir):
     print(f"cd {worktree_path}")
 
 
-def get_worktree_list(git_dir):
-    """Get a list of all worktrees for the repository.
+def get_git_worktrees(git_dir):
+    """Get worktrees as reported by git worktree list command.
     
-    Returns a list of dicts with 'path' and 'branch' keys.
+    Returns a dict mapping branch names to their paths.
     """
+    git_worktrees = {}
     try:
         result = subprocess.run(
             ["git", f"--git-dir={git_dir}", "worktree", "list"],
@@ -89,7 +90,6 @@ def get_worktree_list(git_dir):
             text=True,
         )
         
-        worktrees = []
         for line in result.stdout.splitlines():
             parts = line.split()
             if len(parts) >= 3:
@@ -99,38 +99,116 @@ def get_worktree_list(git_dir):
                 branch = branch_info.strip('[]')
                 # Skip detached HEAD worktrees
                 if branch != '(detached)' and not branch.startswith('(HEAD'):
-                    worktrees.append({
-                        'path': path,
-                        'branch': branch
-                    })
+                    git_worktrees[branch] = path
         
-        return worktrees
+        return git_worktrees
     except subprocess.CalledProcessError as e:
-        print(f"Error listing worktrees: {e}", file=sys.stderr)
+        print(f"Error listing git worktrees: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-def list_worktrees(git_dir):
-    """Display list of worktrees to the user."""
+def get_directory_worktrees(git_dir):
+    """Get worktrees by examining the worktree directory structure.
+    
+    Returns a dict mapping branch names to their paths.
+    """
+    dir_worktrees = {}
+    worktree_base = get_worktree_base(git_dir)
+    
+    # Check if the worktree directory exists
+    if not os.path.isdir(worktree_base):
+        return dir_worktrees
+    
+    # Look for subdirectories in the worktree base directory
+    try:
+        for entry in os.listdir(worktree_base):
+            path = os.path.join(worktree_base, entry)
+            if os.path.isdir(path):
+                # Check if it looks like a git worktree
+                if os.path.isdir(os.path.join(path, '.git')) or os.path.isfile(os.path.join(path, '.git')):
+                    dir_worktrees[entry] = path
+        
+        return dir_worktrees
+    except OSError as e:
+        print(f"Error examining worktree directory: {e}", file=sys.stderr)
+        return dir_worktrees
+
+
+def get_worktree_list(git_dir):
+    """Get a list of all worktrees for the repository, comparing git command output
+    with directory examination.
+    
+    Returns a list of dicts with 'path' and 'branch' keys.
+    """
+    # Get worktrees from both sources
+    git_worktrees = get_git_worktrees(git_dir)
+    dir_worktrees = get_directory_worktrees(git_dir)
+    
+    # Combine results, reporting any discrepancies
+    worktrees = []
+    all_branches = set(git_worktrees.keys()) | set(dir_worktrees.keys())
+    
+    for branch in all_branches:
+        git_path = git_worktrees.get(branch)
+        dir_path = dir_worktrees.get(branch)
+        
+        if git_path and dir_path:
+            # Branch exists in both sources
+            if git_path != dir_path:
+                print(f"Warning: Mismatch for branch '{branch}':", file=sys.stderr)
+                print(f"  Git reports: {git_path}", file=sys.stderr)
+                print(f"  Directory shows: {dir_path}", file=sys.stderr)
+            
+            # Use the git path as the source of truth
+            worktrees.append({
+                'path': git_path,
+                'branch': branch
+            })
+        elif git_path:
+            # Branch exists in git but not in directory
+            print(f"Warning: Branch '{branch}' found by git but not in worktree directory", file=sys.stderr)
+            worktrees.append({
+                'path': git_path,
+                'branch': branch
+            })
+        elif dir_path:
+            # Branch exists in directory but not reported by git
+            print(f"Warning: Directory '{branch}' exists in worktree path but not recognized by git", file=sys.stderr)
+            # Don't add to the list as it's not a valid worktree according to git
+    
+    return worktrees
+
+
+def list_worktrees(git_dir, branches_only=False):
+    """Display list of worktrees to the user.
+    
+    If branches_only is True, only prints the branch names, one per line.
+    """
     # Get worktrees using our shared function
     worktrees = get_worktree_list(git_dir)
     
     if not worktrees:
-        print("No worktrees found")
+        if not branches_only:
+            print("No worktrees found")
         return
     
-    # Display the full worktree list using the git command for consistent output
-    try:
-        result = subprocess.run(
-            ["git", f"--git-dir={git_dir}", "worktree", "list"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print(result.stdout, end="")
-    except subprocess.CalledProcessError as e:
-        print(f"Error listing worktrees: {e}", file=sys.stderr)
-        sys.exit(1)
+    if branches_only:
+        # Just print branch names, one per line (for tab completion)
+        for worktree in worktrees:
+            print(worktree['branch'])
+    else:
+        # Display the full worktree list using the git command for consistent output
+        try:
+            result = subprocess.run(
+                ["git", f"--git-dir={git_dir}", "worktree", "list"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            print(result.stdout, end="")
+        except subprocess.CalledProcessError as e:
+            print(f"Error listing worktrees: {e}", file=sys.stderr)
+            sys.exit(1)
         
         
 def remove_worktree(branch_name, git_dir):
@@ -187,7 +265,6 @@ def main():
     # Create a 'list' subcommand that's implicit if no command is provided
     list_parser = subparsers.add_parser("list", aliases=["ls", "l"], help="List all worktrees")
     list_parser.add_argument("--branches", action="store_true", help="List only branch names (for tab completion)")
-    list_parser.add_argument("--paths", action="store_true", help="List only paths (for scripts)")
     
     args = parser.parse_args()
 
@@ -216,7 +293,9 @@ def main():
     elif args.command in ["remove", "rm"]:
         remove_worktree(args.branch_name, git_dir)
     elif args.command in ["list", "ls", "l"]:
-        list_worktrees(git_dir)
+        # Check if branches-only mode is requested
+        branches_only = hasattr(args, 'branches') and args.branches
+        list_worktrees(git_dir, branches_only=branches_only)
 
 
 if __name__ == "__main__":
