@@ -11,8 +11,34 @@ def run_git_command(cmd_args, git_dir):
     return subprocess.run(cmd, check=True)
 
 
+def get_worktree_base(git_dir):
+    """Get the standard worktree base directory from git_dir."""
+    # Replace .git extension with .gwt
+    if git_dir.endswith('.git'):
+        worktree_base = git_dir[:-4] + '.gwt'
+    else:
+        # Fallback if no .git extension
+        worktree_base = git_dir + '.gwt'
+    
+    # Create the directory if it doesn't exist
+    if not os.path.exists(worktree_base):
+        os.makedirs(worktree_base, exist_ok=True)
+        # Create a README.md file explaining the directory
+        readme_path = os.path.join(worktree_base, 'README.md')
+        with open(readme_path, 'w') as f:
+            f.write("""# Git Worktree Directory
+
+This directory contains git worktrees managed by the gwt tool.
+Each subdirectory is a separate worktree for a branch.
+
+For more information, see: https://github.com/username/gwt
+""")
+        
+    return worktree_base
+
+
 def create_branch_and_worktree(branch_name, git_dir):
-    worktree_base = f"{git_dir}/worktrees"
+    worktree_base = get_worktree_base(git_dir)
     
     try:
         # Create new branch
@@ -27,12 +53,32 @@ def create_branch_and_worktree(branch_name, git_dir):
 
 
 def switch_to_worktree(branch_name, git_dir):
-    worktree_base = f"{git_dir}/worktrees"
+    # Use the standard worktree base directory
+    worktree_base = get_worktree_base(git_dir)
     worktree_path = os.path.join(worktree_base, branch_name)
     
     if not os.path.isdir(worktree_path):
-        print(f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr)
-        sys.exit(1)
+        # Try to find the worktree using git worktree list
+        try:
+            result = subprocess.run(
+                ["git", f"--git-dir={git_dir}", "worktree", "list"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            
+            # Check if the branch exists but is in a different location
+            for line in result.stdout.splitlines():
+                if f"[{branch_name}]" in line:
+                    worktree_path = line.split()[0]
+                    break
+            else:
+                # Branch not found in any worktree
+                print(f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr)
+                sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Print the command to change directory
     # The calling shell script will parse this and execute the cd

@@ -36,6 +36,7 @@ _gwt_completions() {
             switch|s|remove|rm)
                 # Only complete with branch names if GWT_GIT_DIR is set
                 if [ -n "$GWT_GIT_DIR" ] && [ -d "$GWT_GIT_DIR" ]; then
+                    # Find branches that have worktrees
                     local worktrees=$(git --git-dir="$GWT_GIT_DIR" worktree list 2>/dev/null | awk '{print $3}' | sed 's/\[//' | sed 's/\]//' | grep -v '(detached)')
                     COMPREPLY=( $(compgen -W "${worktrees}" -- "${cur}") )
                 fi

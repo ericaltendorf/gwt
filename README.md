@@ -37,11 +37,16 @@ can be initialized in your `.bashrc`.
 
 ## Background: bare repositories
 
-`gwt` makes some assumptions about your repository and worktree directory
-layout.   It assumes you use bare repositories, with worktrees stored in the
-in a `worktrees/` subdir thereof.
+`gwt` is designed to work with bare repositories and follows a convention for directory
+layout to make worktree management easier:
 
-Bare repos are the cleanest way to use worktrees.  Clone with `--bare`, then 
+- If your repo is at `/path/to/repo.git` (bare repo)
+- Worktrees are stored at `/path/to/repo.gwt/branch-name`
+
+This separation keeps Git's internal data (`.git`) separate from your working files
+while maintaining a clear relationship between repositories and their worktrees.
+
+Bare repos are the cleanest way to use worktrees. Clone with `--bare`, then 
 set up remote tracking: `cd` into the repo, and run the following
 ([further reading](https://morgan.cugerone.com/blog/workarounds-to-git-worktree-using-bare-repository-and-cannot-fetch-remote-branches/)).
 
