@@ -82,7 +82,12 @@ If you prefer to install manually:
 
 1. Make sure Python 3.6+ is installed on your system
 
-2. Copy the scripts to a directory in your PATH:
+2. Install required Python packages:
+   ```bash
+   pip install tomli tomli-w
+   ```
+
+3. Copy the scripts to a directory in your PATH:
    ```bash
    mkdir -p ~/.local/bin
    cp gwt.py gwt.sh ~/.local/bin/
@@ -103,17 +108,55 @@ If you prefer to install manually:
 
 ## Configuration
 
-Setup allowed you to set a default `GWT_GIT_DIR` so that new
-shells will automatically know where your repo lives.  You
-can re-set that dir manually or using `gwt` itself:
+### Git Directory
 
-```bash
-# Method 1: Set it directly in the shell
-export GWT_GIT_DIR=/path/to/your/repo.git
+There are three ways to specify which git repository to work with:
 
-# Method 2: Use the built-in command
-gwt repo /path/to/your/repo.git
+1. Set the `GWT_GIT_DIR` environment variable directly:
+   ```bash
+   export GWT_GIT_DIR=/path/to/your/repo.git
+   ```
+
+2. Use the built-in command (this also saves it as the default in your config file):
+   ```bash
+   gwt repo /path/to/your/repo.git
+   ```
+
+3. Configure a default repository in the config file (see below)
+
+### Configuration File
+
+GWT can be configured using a TOML file at `~/.config/gwt/config.toml`.
+
+Example configuration:
+
+```toml
+# Default repository to use if GWT_GIT_DIR env var isn't set
+default_repo = "/path/to/default/repo.git"
+
+# Repository-specific configurations
+[repos."/path/to/repo1.git"]
+# Commands to run after creating a new worktree
+# These run in the new worktree directory
+post_create_commands = [
+    "npm install",
+    "cp ../.env.example .env",
+    "echo 'Worktree setup complete!'"
+]
+
+[repos."/path/to/repo2.git"]
+post_create_commands = [
+    "pip install -e .",
+    "pre-commit install"
+]
 ```
+
+#### Configuration Options
+
+- `default_repo`: Path to the git directory to use by default when `GWT_GIT_DIR` is not set
+- `repos.<git-dir>.post_create_commands`: List of shell commands to run after creating a new worktree. These commands run in the newly created worktree directory.
+
+The configuration file is created automatically when you first use the `gwt repo` command. You can then edit it manually to add post-create commands or other settings.
 
 
 ## Usage
