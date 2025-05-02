@@ -336,12 +336,12 @@ def list_worktrees(git_dir, branches_only=False):
     try:
         # Get worktrees using our shared function
         worktrees = get_worktree_list(git_dir)
-        
+
         if not worktrees:
             if not branches_only:
                 print("No worktrees found")
             return
-        
+
         if branches_only:
             # Just print branch names, one per line (for tab completion)
             for worktree in worktrees:
@@ -408,9 +408,9 @@ def remove_worktree(branch_name, git_dir):
 
 def get_git_dir():
     """Get the git directory from either the environment variable or the config file.
-    
+
     This is a common function to encapsulate the logic for determining the git dir.
-    
+
     Returns:
         str: The git directory path, or None if not found
     """
@@ -418,14 +418,14 @@ def get_git_dir():
     git_dir = os.environ.get("GWT_GIT_DIR")
     if git_dir and os.path.isdir(git_dir):
         return git_dir
-    
+
     # If not set in environment, check the config file if TOML is available
     if HAS_TOML:
         config = load_config()
         default_repo = config.get("default_repo")
         if default_repo and os.path.isdir(default_repo):
             return default_repo
-    
+
     # If neither source provides a valid git dir, return None
     return None
 
@@ -434,12 +434,12 @@ def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Create a '--new' subcommand
-    new_parser = subparsers.add_parser("--new", help="Create a new branch and worktree")
+    # Create a 'new' subcommand
+    new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
     new_parser.add_argument("branch_name", help="Name of the new branch")
 
-    # Create a '--repo' subcommand
-    repo_parser = subparsers.add_parser("--repo", help="Set the git directory")
+    # Create a 'repo' subcommand
+    repo_parser = subparsers.add_parser("repo", help="Set the git directory")
     repo_parser.add_argument("git_dir", help="Path to the git directory")
 
     # Create a 'switch' subcommand with 's' as alias
@@ -461,15 +461,14 @@ def main():
         "list", aliases=["ls", "l"], help="List all worktrees"
     )
     list_parser.add_argument(
-        "--branches",
+        "branches",
         action="store_true",
         help="List only branch names (for tab completion)",
     )
     list_parser.add_argument(
-        "--git-dir",
-        help="Explicitly specify the git directory (for tab completion)"
+        "--git-dir", help="Explicitly specify the git directory (for tab completion)"
     )
-    
+
     # Special command to get the default repository from config
     get_repo_parser = subparsers.add_parser(
         "get-repo", help="Get the default repository from config (internal use)"
@@ -481,7 +480,7 @@ def main():
     if args.command == "repo":
         # Print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
-        
+
         # Update the config if TOML is available
         if HAS_TOML:
             config = load_config()
@@ -502,21 +501,21 @@ def main():
             if config.get("default_repo") and os.path.isdir(config["default_repo"]):
                 print(config["default_repo"])
         return
-        
+
     # If no command specified, default to list
     if args.command is None:
         args.command = "list"
 
     # Get the git directory from environment or config
     git_dir = None
-    
+
     # Check for explicit git-dir in arguments (for list command)
-    if hasattr(args, 'git_dir') and args.git_dir:
+    if hasattr(args, "git_dir") and args.git_dir:
         git_dir = args.git_dir
     else:
         # Use the common function to get the git dir
         git_dir = get_git_dir()
-    
+
     # If no git dir is available, show error and exit
     if not git_dir:
         if HAS_TOML:
@@ -525,7 +524,7 @@ def main():
                 file=sys.stderr,
             )
             print(
-                "Please set it with: gwt --repo /path/to/your/repo.git", file=sys.stderr
+                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
             )
             print(
                 "Or configure a default repo in ~/.config/gwt/config.toml",
@@ -536,14 +535,14 @@ def main():
                 "Error: GWT_GIT_DIR environment variable is not set.", file=sys.stderr
             )
             print(
-                "Please set it with: gwt --repo /path/to/your/repo.git", file=sys.stderr
+                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
             )
         sys.exit(1)
 
     # Now pass git_dir to all functions that need it
-    if args.command == "--new":
+    if args.command == "new":
         create_branch_and_worktree(args.branch_name, git_dir)
-    elif args.command == "--repo":
+    elif args.command == "repo":
         # Just print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
     elif args.command in ["switch", "s"]:
