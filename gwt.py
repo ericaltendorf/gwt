@@ -461,7 +461,7 @@ def main():
         "list", aliases=["ls", "l"], help="List all worktrees"
     )
     list_parser.add_argument(
-        "branches",
+        "--branches",
         action="store_true",
         help="List only branch names (for tab completion)",
     )
