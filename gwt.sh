@@ -4,13 +4,29 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/gwt.py"
 
+# Verify Python script exists and is executable
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+    echo "Error: Python script not found at $PYTHON_SCRIPT" >&2
+    echo "This could happen if the script was moved or renamed." >&2
+    echo "Verify that the script is installed correctly." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+if [ ! -x "$PYTHON_SCRIPT" ]; then
+    echo "Warning: Python script is not executable. Fixing permissions..." >&2
+    chmod +x "$PYTHON_SCRIPT"
+fi
+
 _gwt_get_branches() {
     # Function to get list of branch names with worktrees
-    # Only run if GWT_GIT_DIR is set and valid
-    if [ -n "$GWT_GIT_DIR" ] && [ -d "$GWT_GIT_DIR" ]; then
-        # Use the Python script to get branch names
-        # The script will handle all the verification and comparison
-        "$PYTHON_SCRIPT" list --branches
+    output=$("$PYTHON_SCRIPT" list --branches 2>&1)
+    result=$?
+    
+    if [ $result -eq 0 ]; then
+        echo "$output"
+    else
+        # Return empty to indicate failure
+        echo ""
     fi
 }
 
@@ -26,6 +42,8 @@ _gwt_completions() {
 
     # For the first argument (position 1), complete with commands
     if [[ ${COMP_CWORD} -eq 1 ]]; then
+        # Add space after command completion
+        compopt +o nospace
         COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
     fi
@@ -39,14 +57,19 @@ _gwt_completions() {
                 ;;
             repo)
                 # Use directory completion for repo command
-                compopt -o filenames
+                compopt -o filenames -o nospace
                 COMPREPLY=( $(compgen -d -- "${cur}") )
                 return 0
                 ;;
             switch|s|remove|rm)
-                # Get branch names and provide them as completions
-                local branches=$(_gwt_get_branches)
-                if [ -n "$branches" ]; then
+                # Capture the output of _gwt_get_branches to a variable
+                _gwt_get_branches_output=$(_gwt_get_branches)
+                    
+                # Only use the output if it's not empty
+                if [ -n "$_gwt_get_branches_output" ]; then
+                    # Convert newlines to spaces for compgen
+                    branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
+                    
                     COMPREPLY=( $(compgen -W "${branches}" -- "${cur}") )
                 fi
                 return 0

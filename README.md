@@ -17,7 +17,7 @@ it fast and easy to:
 
 - Create a new branch+worktree [in the current repo]
 
-  `gwt new branch-name`
+  `gwt --new branch-name`
 
 - Remove a worktree and optionally its branch
 
@@ -25,7 +25,7 @@ it fast and easy to:
 
 - Switch to a different repo
 
-  `gwt repo /some/other/repo.git`
+  `gwt --repo /some/other/repo.git`
 
 The "current repo" is stored in `$GWT_GIT_DIR` and a default value
 can be initialized in your `.bashrc`.
@@ -119,7 +119,7 @@ There are three ways to specify which git repository to work with:
 
 2. Use the built-in command (this also saves it as the default in your config file):
    ```bash
-   gwt repo /path/to/your/repo.git
+   gwt --repo /path/to/your/repo.git
    ```
 
 3. Configure a default repository in the config file (see below)
@@ -156,7 +156,7 @@ post_create_commands = [
 - `default_repo`: Path to the git directory to use by default when `GWT_GIT_DIR` is not set
 - `repos.<git-dir>.post_create_commands`: List of shell commands to run after creating a new worktree. These commands run in the newly created worktree directory.
 
-The configuration file is created automatically when you first use the `gwt repo` command. You can then edit it manually to add post-create commands or other settings.
+The configuration file is created automatically when you first use the `gwt --repo` command. You can then edit it manually to add post-create commands or other settings.
 
 
 ## Usage
@@ -170,7 +170,7 @@ gwt ls
 
 Create a new branch and worktree:
 ```
-gwt new branch-name
+gwt --new branch-name
 ```
 
 Switch to an existing worktree:
@@ -181,7 +181,7 @@ gwt s branch-name
 
 Set the git directory for future commands:
 ```
-gwt repo /path/to/another/repo.git
+gwt --repo /path/to/another/repo.git
 ```
 
 Remove a worktree and optionally its branch:

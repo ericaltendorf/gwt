@@ -177,7 +177,6 @@ def create_branch_and_worktree(branch_name, git_dir):
 
         # Get the repo config to check for post-create commands
         repo_config = get_repo_config(git_dir)
-        print(f"Repo config: {repo_config}", file=sys.stderr)
         if repo_config.get("post_create_commands"):
             print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
             current_dir = os.getcwd()
@@ -334,31 +333,37 @@ def list_worktrees(git_dir, branches_only=False):
 
     If branches_only is True, only prints the branch names, one per line.
     """
-    # Get worktrees using our shared function
-    worktrees = get_worktree_list(git_dir)
-
-    if not worktrees:
+    try:
+        # Get worktrees using our shared function
+        worktrees = get_worktree_list(git_dir)
+        
+        if not worktrees:
+            if not branches_only:
+                print("No worktrees found")
+            return
+        
+        if branches_only:
+            # Just print branch names, one per line (for tab completion)
+            for worktree in worktrees:
+                print(worktree["branch"])
+        else:
+            # Display the full worktree list using the git command for consistent output
+            try:
+                result = subprocess.run(
+                    ["git", f"--git-dir={git_dir}", "worktree", "list"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                print(result.stdout, end="")
+            except subprocess.CalledProcessError as e:
+                print(f"Error listing worktrees: {e}", file=sys.stderr)
+                sys.exit(1)
+    except Exception as e:
         if not branches_only:
-            print("No worktrees found")
+            print(f"Error: {e}", file=sys.stderr)
+        # In branches-only mode, just return silently on error
         return
-
-    if branches_only:
-        # Just print branch names, one per line (for tab completion)
-        for worktree in worktrees:
-            print(worktree["branch"])
-    else:
-        # Display the full worktree list using the git command for consistent output
-        try:
-            result = subprocess.run(
-                ["git", f"--git-dir={git_dir}", "worktree", "list"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print(result.stdout, end="")
-        except subprocess.CalledProcessError as e:
-            print(f"Error listing worktrees: {e}", file=sys.stderr)
-            sys.exit(1)
 
 
 def remove_worktree(branch_name, git_dir):
@@ -401,16 +406,40 @@ def remove_worktree(branch_name, git_dir):
         sys.exit(1)
 
 
+def get_git_dir():
+    """Get the git directory from either the environment variable or the config file.
+    
+    This is a common function to encapsulate the logic for determining the git dir.
+    
+    Returns:
+        str: The git directory path, or None if not found
+    """
+    # First, check if GWT_GIT_DIR is set in the environment
+    git_dir = os.environ.get("GWT_GIT_DIR")
+    if git_dir and os.path.isdir(git_dir):
+        return git_dir
+    
+    # If not set in environment, check the config file if TOML is available
+    if HAS_TOML:
+        config = load_config()
+        default_repo = config.get("default_repo")
+        if default_repo and os.path.isdir(default_repo):
+            return default_repo
+    
+    # If neither source provides a valid git dir, return None
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Create a 'new' subcommand
-    new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
+    # Create a '--new' subcommand
+    new_parser = subparsers.add_parser("--new", help="Create a new branch and worktree")
     new_parser.add_argument("branch_name", help="Name of the new branch")
 
-    # Create a 'repo' subcommand
-    repo_parser = subparsers.add_parser("repo", help="Set the git directory")
+    # Create a '--repo' subcommand
+    repo_parser = subparsers.add_parser("--repo", help="Set the git directory")
     repo_parser.add_argument("git_dir", help="Path to the git directory")
 
     # Create a 'switch' subcommand with 's' as alias
@@ -436,14 +465,23 @@ def main():
         action="store_true",
         help="List only branch names (for tab completion)",
     )
+    list_parser.add_argument(
+        "--git-dir",
+        help="Explicitly specify the git directory (for tab completion)"
+    )
+    
+    # Special command to get the default repository from config
+    get_repo_parser = subparsers.add_parser(
+        "get-repo", help="Get the default repository from config (internal use)"
+    )
 
     args = parser.parse_args()
 
-    # Handle repo command without needing GIT_DIR
+    # Handle special commands that don't need a configured git dir
     if args.command == "repo":
         # Print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
-
+        
         # Update the config if TOML is available
         if HAS_TOML:
             config = load_config()
@@ -456,20 +494,30 @@ def main():
                 file=sys.stderr,
             )
         return
-
+    elif args.command == "get-repo":
+        # Special command to output the default repo from config
+        # This is used by the shell completion function
+        if HAS_TOML:
+            config = load_config()
+            if config.get("default_repo") and os.path.isdir(config["default_repo"]):
+                print(config["default_repo"])
+        return
+        
     # If no command specified, default to list
     if args.command is None:
         args.command = "list"
 
-    # For other commands, check GIT_DIR once
-    git_dir = os.environ.get("GWT_GIT_DIR")
-    if not git_dir and HAS_TOML:
-        # Check if there's a default repo in the config
-        config = load_config()
-        if config.get("default_repo"):
-            git_dir = config["default_repo"]
-            print(f"Using default repo from config: {git_dir}", file=sys.stderr)
-
+    # Get the git directory from environment or config
+    git_dir = None
+    
+    # Check for explicit git-dir in arguments (for list command)
+    if hasattr(args, 'git_dir') and args.git_dir:
+        git_dir = args.git_dir
+    else:
+        # Use the common function to get the git dir
+        git_dir = get_git_dir()
+    
+    # If no git dir is available, show error and exit
     if not git_dir:
         if HAS_TOML:
             print(
@@ -477,7 +525,7 @@ def main():
                 file=sys.stderr,
             )
             print(
-                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
+                "Please set it with: gwt --repo /path/to/your/repo.git", file=sys.stderr
             )
             print(
                 "Or configure a default repo in ~/.config/gwt/config.toml",
@@ -488,13 +536,16 @@ def main():
                 "Error: GWT_GIT_DIR environment variable is not set.", file=sys.stderr
             )
             print(
-                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
+                "Please set it with: gwt --repo /path/to/your/repo.git", file=sys.stderr
             )
         sys.exit(1)
 
     # Now pass git_dir to all functions that need it
-    if args.command == "new":
+    if args.command == "--new":
         create_branch_and_worktree(args.branch_name, git_dir)
+    elif args.command == "--repo":
+        # Just print a message for the shell script to handle
+        print(f"GWT_GIT_DIR={args.git_dir}")
     elif args.command in ["switch", "s"]:
         switch_to_worktree(args.branch_name, git_dir)
     elif args.command in ["remove", "rm"]:
@@ -502,7 +553,13 @@ def main():
     elif args.command in ["list", "ls", "l"]:
         # Check if branches-only mode is requested
         branches_only = hasattr(args, "branches") and args.branches
-        list_worktrees(git_dir, branches_only=branches_only)
+        try:
+            list_worktrees(git_dir, branches_only=branches_only)
+        except Exception as e:
+            # When in branches-only mode, don't raise errors, just fail silently
+            if not branches_only:
+                print(f"Error listing worktrees: {e}", file=sys.stderr)
+                sys.exit(1)
 
 
 if __name__ == "__main__":
