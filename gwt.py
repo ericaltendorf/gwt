@@ -197,6 +197,53 @@ def create_branch_and_worktree(branch_name, git_dir):
         sys.exit(1)
 
 
+def track_remote_branch(branch_name, git_dir, remote="origin"):
+    """Create a worktree that tracks a remote branch.
+    
+    First fetches the remote branch, then creates a local branch tracking the remote,
+    and sets up a worktree for it.
+    """
+    worktree_base = get_worktree_base(git_dir)
+    worktree_path = os.path.join(worktree_base, branch_name)
+    
+    try:
+        # Fetch the remote branch
+        print(f"Fetching {remote}/{branch_name}...", file=sys.stderr)
+        run_git_command(["fetch", remote, branch_name], git_dir)
+        
+        # Create worktree with tracking branch
+        print(f"Creating worktree at {worktree_path}...", file=sys.stderr)
+        run_git_command(
+            ["worktree", "add", "-b", branch_name, worktree_path, f"{remote}/{branch_name}"],
+            git_dir
+        )
+        print(
+            f"Created tracking branch '{branch_name}' for '{remote}/{branch_name}' and worktree at {worktree_path}",
+            file=sys.stderr,
+        )
+        
+        # Get the repo config to check for post-create commands
+        repo_config = get_repo_config(git_dir)
+        if repo_config.get("post_create_commands"):
+            print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
+            current_dir = os.getcwd()
+            try:
+                # Change to the worktree directory to run the commands
+                os.chdir(worktree_path)
+                for cmd in repo_config["post_create_commands"]:
+                    print(f"Running: {cmd}", file=sys.stderr)
+                    subprocess.run(cmd, shell=True, check=True)
+            except Exception as e:
+                print(f"Error running post-create commands: {e}", file=sys.stderr)
+            finally:
+                # Change back to the original directory
+                os.chdir(current_dir)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def switch_to_worktree(branch_name, git_dir):
     # Use the standard worktree base directory
     worktree_base = get_worktree_base(git_dir)
@@ -438,6 +485,15 @@ def main():
     new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
     new_parser.add_argument("branch_name", help="Name of the new branch")
 
+    # Create a 'track' subcommand
+    track_parser = subparsers.add_parser("track", help="Create a worktree that tracks a remote branch")
+    track_parser.add_argument("branch_name", help="Name of the branch to track")
+    track_parser.add_argument(
+        "--remote", "-r", 
+        default="origin",
+        help="Remote to track (default: origin)"
+    )
+
     # Create a 'repo' subcommand
     repo_parser = subparsers.add_parser("repo", help="Set the git directory")
     repo_parser.add_argument("git_dir", help="Path to the git directory")
@@ -542,6 +598,8 @@ def main():
     # Now pass git_dir to all functions that need it
     if args.command == "new":
         create_branch_and_worktree(args.branch_name, git_dir)
+    elif args.command == "track":
+        track_remote_branch(args.branch_name, git_dir, args.remote)
     elif args.command == "repo":
         # Just print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")

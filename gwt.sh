@@ -35,7 +35,7 @@ _gwt_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="new repo switch s list ls l remove rm"
+    commands="new track repo switch s list ls l remove rm"
     
     # Don't use file completion as a fallback
     compopt -o nospace
@@ -51,8 +51,8 @@ _gwt_completions() {
     # For position 2, handle specific subcommand completions
     if [[ ${COMP_CWORD} -eq 2 ]]; then
         case "${prev}" in
-            new)
-                # No specific completions for new since it expects a new branch name
+            new|track)
+                # No specific completions for new or track since they expect a branch name
                 return 0
                 ;;
             repo)
