@@ -495,8 +495,8 @@ def main():
     )
 
     # Create a 'repo' subcommand
-    repo_parser = subparsers.add_parser("repo", help="Set the git directory")
-    repo_parser.add_argument("git_dir", help="Path to the git directory")
+    repo_parser = subparsers.add_parser("repo", help="Set or show the git directory")
+    repo_parser.add_argument("git_dir", nargs="?", help="Path to the git directory (omit to show current)")
 
     # Create a 'switch' subcommand with 's' as alias
     switch_parser = subparsers.add_parser(
@@ -534,20 +534,28 @@ def main():
 
     # Handle special commands that don't need a configured git dir
     if args.command == "repo":
-        # Print a message for the shell script to handle
-        print(f"GWT_GIT_DIR={args.git_dir}")
+        if args.git_dir:
+            # Set the git directory
+            print(f"GWT_GIT_DIR={args.git_dir}")
 
-        # Update the config if TOML is available
-        if HAS_TOML:
-            config = load_config()
-            config["default_repo"] = args.git_dir
-            save_config(config)
-            print(f"Default repo set to {args.git_dir}", file=sys.stderr)
+            # Update the config if TOML is available
+            if HAS_TOML:
+                config = load_config()
+                config["default_repo"] = args.git_dir
+                save_config(config)
+                print(f"Default repo set to {args.git_dir}", file=sys.stderr)
+            else:
+                print(
+                    f"Note: Config file not updated (TOML support not available)",
+                    file=sys.stderr,
+                )
         else:
-            print(
-                f"Note: Config file not updated (TOML support not available)",
-                file=sys.stderr,
-            )
+            # Show the current git directory
+            current_git_dir = get_git_dir()
+            if current_git_dir:
+                print(f"Current repo: {current_git_dir}")
+            else:
+                print("No repo currently configured")
         return
     elif args.command == "get-repo":
         # Special command to output the default repo from config
