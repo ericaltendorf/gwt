@@ -135,13 +135,19 @@ def run_git_command(cmd_args, git_dir):
 
 def get_worktree_base(git_dir):
     """Get the standard worktree base directory from git_dir."""
-    # Replace .git extension with .gwt
-    if git_dir.endswith(".git"):
+    git_dir_path = Path(git_dir).resolve()
+    
+    # Check if this is a non-bare repo (ends with /.git subdirectory)
+    if git_dir_path.name == ".git" and git_dir_path.is_dir():
+        # Non-bare repo: /path/to/repo/.git -> /path/to/repo.gwt
+        repo_path = git_dir_path.parent
+        worktree_base = str(repo_path) + ".gwt"
+    elif git_dir.endswith(".git"):
+        # Bare repo: /path/to/repo.git -> /path/to/repo.gwt
         worktree_base = git_dir[:-4] + ".gwt"
     else:
-        # Fallback if no .git extension
-        worktree_base = git_dir + ".gwt"
-
+        # Fallback for other cases
+        worktree_base = git_dir.rstrip("/") + ".gwt"
     # Create the directory if it doesn't exist
     if not os.path.exists(worktree_base):
         os.makedirs(worktree_base, exist_ok=True)
@@ -192,6 +198,10 @@ def create_branch_and_worktree(branch_name, git_dir):
                 # Change back to the original directory
                 os.chdir(current_dir)
 
+        # Print the command to change directory (like switch_to_worktree does)
+        # The calling shell script will parse this and execute the cd
+        print(f"cd {worktree_path}")
+
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -238,6 +248,10 @@ def track_remote_branch(branch_name, git_dir, remote="origin"):
             finally:
                 # Change back to the original directory
                 os.chdir(current_dir)
+
+        # Print the command to change directory (like switch_to_worktree does)
+        # The calling shell script will parse this and execute the cd
+        print(f"cd {worktree_path}")
 
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}", file=sys.stderr)
