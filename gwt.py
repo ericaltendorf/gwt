@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "tomli>=2.0.0; python_version < '3.11'",
+#   "tomli-w>=1.0.0",
+# ]
+# ///
+
 import argparse
 import os
 import subprocess
@@ -7,7 +15,11 @@ from pathlib import Path
 
 # Try to import TOML libraries, but fall back to no-op config if unavailable
 try:
-    import tomli  # Python 3.11+ can use tomllib from standard library
+    # Python 3.11+ has tomllib built-in
+    if sys.version_info >= (3, 11):
+        import tomllib as tomli
+    else:
+        import tomli
     import tomli_w
 
     HAS_TOML = True
@@ -288,6 +300,7 @@ def get_git_worktrees(git_dir):
     """Get worktrees as reported by git worktree list command.
 
     Returns a dict mapping branch names to their paths.
+    Excludes the main working tree (first entry).
     """
     git_worktrees = {}
     try:
@@ -298,13 +311,19 @@ def get_git_worktrees(git_dir):
             text=True,
         )
 
-        for line in result.stdout.splitlines():
+        lines = result.stdout.splitlines()
+        for i, line in enumerate(lines):
             parts = line.split()
             if len(parts) >= 3:
                 path = parts[0]
                 branch_info = parts[2]
                 # Extract branch name from [branch] format
                 branch = branch_info.strip("[]")
+                
+                # Skip the first entry - it's the main working tree
+                if i == 0:
+                    continue
+                    
                 # Skip detached HEAD worktrees
                 if branch != "(detached)" and not branch.startswith("(HEAD"):
                     git_worktrees[branch] = path
@@ -350,7 +369,7 @@ def get_worktree_list(git_dir):
 
     Returns a list of dicts with 'path' and 'branch' keys.
     """
-    # Get worktrees from both sources
+    # Get worktrees from both sources (already excludes main working tree)
     git_worktrees = get_git_worktrees(git_dir)
     dir_worktrees = get_directory_worktrees(git_dir)
 
@@ -372,11 +391,14 @@ def get_worktree_list(git_dir):
             # Use the git path as the source of truth
             worktrees.append({"path": git_path, "branch": branch})
         elif git_path:
-            # Branch exists in git but not in directory
-            print(
-                f"Warning: Branch '{branch}' found by git but not in worktree directory",
-                file=sys.stderr,
-            )
+            # Branch exists in git but not in directory - only warn if it's
+            # supposed to be in the .gwt directory
+            worktree_base = get_worktree_base(git_dir)
+            if git_path.startswith(worktree_base):
+                print(
+                    f"Warning: Branch '{branch}' found by git but not in worktree directory",
+                    file=sys.stderr,
+                )
             worktrees.append({"path": git_path, "branch": branch})
         elif dir_path:
             # Branch exists in directory but not reported by git
@@ -471,21 +493,34 @@ def get_git_dir():
     """Get the git directory from either the environment variable or the config file.
 
     This is a common function to encapsulate the logic for determining the git dir.
+    Automatically appends .git for non-bare repositories.
 
     Returns:
         str: The git directory path, or None if not found
     """
     # First, check if GWT_GIT_DIR is set in the environment
     git_dir = os.environ.get("GWT_GIT_DIR")
-    if git_dir and os.path.isdir(git_dir):
-        return git_dir
+    if git_dir:
+        # Auto-detect if we need to append .git
+        if os.path.isdir(git_dir):
+            # Check if this is a non-bare repo (has .git subdirectory)
+            dot_git = os.path.join(git_dir, ".git")
+            if os.path.isdir(dot_git):
+                return dot_git
+            return git_dir
 
     # If not set in environment, check the config file if TOML is available
     if HAS_TOML:
         config = load_config()
         default_repo = config.get("default_repo")
-        if default_repo and os.path.isdir(default_repo):
-            return default_repo
+        if default_repo:
+            # Auto-detect if we need to append .git
+            if os.path.isdir(default_repo):
+                # Check if this is a non-bare repo (has .git subdirectory)
+                dot_git = os.path.join(default_repo, ".git")
+                if os.path.isdir(dot_git):
+                    return dot_git
+                return default_repo
 
     # If neither source provides a valid git dir, return None
     return None
@@ -549,15 +584,22 @@ def main():
     # Handle special commands that don't need a configured git dir
     if args.command == "repo":
         if args.git_dir:
+            # Auto-detect if we need to append .git for non-bare repos
+            git_dir = args.git_dir
+            if os.path.isdir(git_dir):
+                dot_git = os.path.join(git_dir, ".git")
+                if os.path.isdir(dot_git):
+                    git_dir = dot_git
+            
             # Set the git directory
-            print(f"GWT_GIT_DIR={args.git_dir}")
+            print(f"GWT_GIT_DIR={git_dir}")
 
             # Update the config if TOML is available
             if HAS_TOML:
                 config = load_config()
-                config["default_repo"] = args.git_dir
+                config["default_repo"] = git_dir
                 save_config(config)
-                print(f"Default repo set to {args.git_dir}", file=sys.stderr)
+                print(f"Default repo set to {git_dir}", file=sys.stderr)
             else:
                 print(
                     f"Note: Config file not updated (TOML support not available)",
