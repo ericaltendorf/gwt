@@ -139,10 +139,27 @@ def get_repo_config(git_dir):
     return default_repo_config
 
 
-def run_git_command(cmd_args, git_dir):
-    """Run a git command using the specified git directory."""
+def run_git_command(cmd_args, git_dir, capture=True):
+    """Run a git command using the specified git directory.
+    
+    Args:
+        cmd_args: List of git command arguments
+        git_dir: Path to the git directory
+        capture: If True, capture output to prevent it from interfering with shell commands.
+                If False, let git interact directly with the terminal (for interactive commands).
+    """
     cmd = ["git", f"--git-dir={git_dir}"] + cmd_args
-    return subprocess.run(cmd, check=True)
+    if capture:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # Print git's output to stderr so it doesn't interfere with shell commands
+        if result.stdout:
+            print(result.stdout, file=sys.stderr, end='')
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end='')
+        return result
+    else:
+        # For interactive commands, don't capture output
+        return subprocess.run(cmd, check=True)
 
 
 def get_worktree_base(git_dir):
@@ -183,7 +200,7 @@ def create_branch_and_worktree(branch_name, git_dir):
     worktree_base = get_worktree_base(git_dir)
 
     try:
-        # Create new branch
+        # Create new branch (will fail if it already exists)
         run_git_command(["branch", branch_name], git_dir)
         # Add worktree
         worktree_path = os.path.join(worktree_base, branch_name)
@@ -215,7 +232,13 @@ def create_branch_and_worktree(branch_name, git_dir):
         print(f"cd {worktree_path}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # Show git's actual error message if available
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
+        elif hasattr(e, 'stdout') and e.stdout:
+            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -266,7 +289,13 @@ def track_remote_branch(branch_name, git_dir, remote="origin"):
         print(f"cd {worktree_path}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # Show git's actual error message if available
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
+        elif hasattr(e, 'stdout') and e.stdout:
+            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -467,8 +496,30 @@ def remove_worktree(branch_name, git_dir):
             )
             sys.exit(1)
 
-        # Remove the worktree
-        run_git_command(["worktree", "remove", worktree_path], git_dir)
+        # Check if we're currently in the worktree being removed
+        current_dir = os.getcwd()
+        worktree_abs = os.path.abspath(worktree_path)
+        current_abs = os.path.abspath(current_dir)
+        
+        need_cd = False
+        if current_abs.startswith(worktree_abs + os.sep) or current_abs == worktree_abs:
+            need_cd = True
+            # Determine the safe directory based on repo type
+            git_dir_path = Path(git_dir).resolve()
+            
+            if git_dir_path.name == ".git" and git_dir_path.is_dir():
+                # Non-bare repo: git_dir is /path/to/repo/.git
+                # Safe dir should be the repo itself: /path/to/repo
+                safe_dir = str(git_dir_path.parent)
+            else:
+                # Bare repo: git_dir is /path/to/repo.git
+                # Safe dir should be parent of .gwt: /path/to
+                safe_dir = os.path.dirname(get_worktree_base(git_dir))
+            
+            print(f"You're in the worktree being removed. Will change to {safe_dir} after removal.", file=sys.stderr)
+
+        # Remove the worktree (don't capture output as it might prompt the user)
+        run_git_command(["worktree", "remove", worktree_path], git_dir, capture=False)
 
         # Then remove the branch if the user confirms
         # Print to stderr and flush to ensure prompt is visible immediately
@@ -480,10 +531,17 @@ def remove_worktree(branch_name, git_dir):
         sys.stderr.flush()
         confirm = input()
         if confirm.lower() == "y":
-            run_git_command(["branch", "-D", branch_name], git_dir)
+            # Change to safe directory first if needed, before trying to delete branch
+            if need_cd:
+                os.chdir(safe_dir)
+            run_git_command(["branch", "-D", branch_name], git_dir, capture=False)
             print(f"Branch '{branch_name}' has been deleted")
 
         print(f"Worktree for '{branch_name}' has been removed")
+        
+        # Output the cd command for the shell to execute if we were in the removed worktree
+        if need_cd:
+            print(f"cd {safe_dir}")
     except subprocess.CalledProcessError as e:
         print(f"Error removing worktree: {e}", file=sys.stderr)
         sys.exit(1)
