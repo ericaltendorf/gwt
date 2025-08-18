@@ -314,11 +314,46 @@ def switch_to_worktree(branch_name, git_dir):
                 worktree_path = worktree["path"]
                 break
         else:
-            # Branch not found in any worktree
-            print(
-                f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr
+            # Worktree not found - check if the branch exists
+            check_result = subprocess.run(
+                ["git", f"--git-dir={git_dir}", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+                capture_output=True,
+                text=True
             )
-            sys.exit(1)
+            
+            if check_result.returncode == 0:
+                # Branch exists but no worktree - create the worktree
+                print(f"Branch '{branch_name}' exists but has no worktree. Creating worktree...", file=sys.stderr)
+                try:
+                    run_git_command(["worktree", "add", worktree_path, branch_name], git_dir)
+                    print(f"Created worktree at {worktree_path}", file=sys.stderr)
+                    
+                    # Run post-create commands if configured
+                    repo_config = get_repo_config(git_dir)
+                    if repo_config.get("post_create_commands"):
+                        print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
+                        current_dir = os.getcwd()
+                        try:
+                            os.chdir(worktree_path)
+                            for cmd in repo_config["post_create_commands"]:
+                                print(f"Running: {cmd}", file=sys.stderr)
+                                subprocess.run(cmd, shell=True, check=True)
+                        except Exception as e:
+                            print(f"Error running post-create commands: {e}", file=sys.stderr)
+                        finally:
+                            os.chdir(current_dir)
+                            
+                except subprocess.CalledProcessError as e:
+                    if hasattr(e, 'stderr') and e.stderr:
+                        print(f"Error creating worktree: {e.stderr.strip()}", file=sys.stderr)
+                    else:
+                        print(f"Error creating worktree: {e}", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                # Branch doesn't exist either
+                print(f"Error: Branch '{branch_name}' not found", file=sys.stderr)
+                print(f"To create a new branch with worktree, use: gwt new {branch_name}", file=sys.stderr)
+                sys.exit(1)
 
     # Print the command to change directory
     # The calling shell script will parse this and execute the cd
