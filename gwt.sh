@@ -91,27 +91,43 @@ _gwt_completions() {
 
 # Function to handle all gwt operations
 gwt() {
-    # Run the Python script and capture output
-    local output=$("$PYTHON_SCRIPT" "$@")
-    
-    # Parse the output for special commands
-    if [[ "$output" == cd* ]]; then
-        # Extract the directory path and change to it
-        local dir="${output#cd }"
-        cd "$dir" || echo "Failed to change directory to $dir"
-    elif [[ "$output" == GWT_GIT_DIR=* ]]; then
-        # Extract the git directory and set it
-        local dir="${output#GWT_GIT_DIR=}"
-        if [ -d "$dir" ]; then
-            export GWT_GIT_DIR="$dir"
-            echo "GWT_GIT_DIR set to $dir"
-        else
-            echo "Error: $dir is not a valid directory" >&2
-            return 1
+    # Check if this is an interactive command that shouldn't have output captured
+    if [[ "$1" == "remove" || "$1" == "rm" ]]; then
+        # Run interactively but capture the last line for potential cd command
+        # Use a temp file to capture output while still allowing interaction
+        local tmpfile=$(mktemp)
+        "$PYTHON_SCRIPT" "$@" | tee "$tmpfile"
+        local last_line=$(tail -n1 "$tmpfile")
+        rm "$tmpfile"
+        
+        # Check if the last line is a cd command
+        if [[ "$last_line" == cd* ]]; then
+            local dir="${last_line#cd }"
+            cd "$dir" || echo "Failed to change directory to $dir"
         fi
     else
-        # Just print the output
-        echo "$output"
+        # Run the Python script and capture output for non-interactive commands
+        local output=$("$PYTHON_SCRIPT" "$@")
+        
+        # Parse the output for special commands
+        if [[ "$output" == cd* ]]; then
+            # Extract the directory path and change to it
+            local dir="${output#cd }"
+            cd "$dir" || echo "Failed to change directory to $dir"
+        elif [[ "$output" == GWT_GIT_DIR=* ]]; then
+            # Extract the git directory and set it
+            local dir="${output#GWT_GIT_DIR=}"
+            if [ -d "$dir" ]; then
+                export GWT_GIT_DIR="$dir"
+                echo "GWT_GIT_DIR set to $dir"
+            else
+                echo "Error: $dir is not a valid directory" >&2
+                return 1
+            fi
+        else
+            # Just print the output
+            echo "$output"
+        fi
     fi
 }
 

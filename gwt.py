@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "tomli>=2.0.0; python_version < '3.11'",
+#   "tomli-w>=1.0.0",
+# ]
+# ///
+
 import argparse
 import os
 import subprocess
@@ -7,7 +15,11 @@ from pathlib import Path
 
 # Try to import TOML libraries, but fall back to no-op config if unavailable
 try:
-    import tomli  # Python 3.11+ can use tomllib from standard library
+    # Python 3.11+ has tomllib built-in
+    if sys.version_info >= (3, 11):
+        import tomllib as tomli
+    else:
+        import tomli
     import tomli_w
 
     HAS_TOML = True
@@ -127,10 +139,27 @@ def get_repo_config(git_dir):
     return default_repo_config
 
 
-def run_git_command(cmd_args, git_dir):
-    """Run a git command using the specified git directory."""
+def run_git_command(cmd_args, git_dir, capture=True):
+    """Run a git command using the specified git directory.
+    
+    Args:
+        cmd_args: List of git command arguments
+        git_dir: Path to the git directory
+        capture: If True, capture output to prevent it from interfering with shell commands.
+                If False, let git interact directly with the terminal (for interactive commands).
+    """
     cmd = ["git", f"--git-dir={git_dir}"] + cmd_args
-    return subprocess.run(cmd, check=True)
+    if capture:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # Print git's output to stderr so it doesn't interfere with shell commands
+        if result.stdout:
+            print(result.stdout, file=sys.stderr, end='')
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end='')
+        return result
+    else:
+        # For interactive commands, don't capture output
+        return subprocess.run(cmd, check=True)
 
 
 def get_worktree_base(git_dir):
@@ -171,7 +200,7 @@ def create_branch_and_worktree(branch_name, git_dir):
     worktree_base = get_worktree_base(git_dir)
 
     try:
-        # Create new branch
+        # Create new branch (will fail if it already exists)
         run_git_command(["branch", branch_name], git_dir)
         # Add worktree
         worktree_path = os.path.join(worktree_base, branch_name)
@@ -203,7 +232,13 @@ def create_branch_and_worktree(branch_name, git_dir):
         print(f"cd {worktree_path}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # Show git's actual error message if available
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
+        elif hasattr(e, 'stdout') and e.stdout:
+            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -254,7 +289,13 @@ def track_remote_branch(branch_name, git_dir, remote="origin"):
         print(f"cd {worktree_path}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # Show git's actual error message if available
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
+        elif hasattr(e, 'stdout') and e.stdout:
+            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -273,11 +314,46 @@ def switch_to_worktree(branch_name, git_dir):
                 worktree_path = worktree["path"]
                 break
         else:
-            # Branch not found in any worktree
-            print(
-                f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr
+            # Worktree not found - check if the branch exists
+            check_result = subprocess.run(
+                ["git", f"--git-dir={git_dir}", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+                capture_output=True,
+                text=True
             )
-            sys.exit(1)
+            
+            if check_result.returncode == 0:
+                # Branch exists but no worktree - create the worktree
+                print(f"Branch '{branch_name}' exists but has no worktree. Creating worktree...", file=sys.stderr)
+                try:
+                    run_git_command(["worktree", "add", worktree_path, branch_name], git_dir)
+                    print(f"Created worktree at {worktree_path}", file=sys.stderr)
+                    
+                    # Run post-create commands if configured
+                    repo_config = get_repo_config(git_dir)
+                    if repo_config.get("post_create_commands"):
+                        print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
+                        current_dir = os.getcwd()
+                        try:
+                            os.chdir(worktree_path)
+                            for cmd in repo_config["post_create_commands"]:
+                                print(f"Running: {cmd}", file=sys.stderr)
+                                subprocess.run(cmd, shell=True, check=True)
+                        except Exception as e:
+                            print(f"Error running post-create commands: {e}", file=sys.stderr)
+                        finally:
+                            os.chdir(current_dir)
+                            
+                except subprocess.CalledProcessError as e:
+                    if hasattr(e, 'stderr') and e.stderr:
+                        print(f"Error creating worktree: {e.stderr.strip()}", file=sys.stderr)
+                    else:
+                        print(f"Error creating worktree: {e}", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                # Branch doesn't exist either
+                print(f"Error: Branch '{branch_name}' not found", file=sys.stderr)
+                print(f"To create a new branch with worktree, use: gwt new {branch_name}", file=sys.stderr)
+                sys.exit(1)
 
     # Print the command to change directory
     # The calling shell script will parse this and execute the cd
@@ -288,6 +364,7 @@ def get_git_worktrees(git_dir):
     """Get worktrees as reported by git worktree list command.
 
     Returns a dict mapping branch names to their paths.
+    Excludes the main working tree (first entry).
     """
     git_worktrees = {}
     try:
@@ -298,13 +375,19 @@ def get_git_worktrees(git_dir):
             text=True,
         )
 
-        for line in result.stdout.splitlines():
+        lines = result.stdout.splitlines()
+        for i, line in enumerate(lines):
             parts = line.split()
             if len(parts) >= 3:
                 path = parts[0]
                 branch_info = parts[2]
                 # Extract branch name from [branch] format
                 branch = branch_info.strip("[]")
+                
+                # Skip the first entry - it's the main working tree
+                if i == 0:
+                    continue
+                    
                 # Skip detached HEAD worktrees
                 if branch != "(detached)" and not branch.startswith("(HEAD"):
                     git_worktrees[branch] = path
@@ -350,7 +433,7 @@ def get_worktree_list(git_dir):
 
     Returns a list of dicts with 'path' and 'branch' keys.
     """
-    # Get worktrees from both sources
+    # Get worktrees from both sources (already excludes main working tree)
     git_worktrees = get_git_worktrees(git_dir)
     dir_worktrees = get_directory_worktrees(git_dir)
 
@@ -372,11 +455,14 @@ def get_worktree_list(git_dir):
             # Use the git path as the source of truth
             worktrees.append({"path": git_path, "branch": branch})
         elif git_path:
-            # Branch exists in git but not in directory
-            print(
-                f"Warning: Branch '{branch}' found by git but not in worktree directory",
-                file=sys.stderr,
-            )
+            # Branch exists in git but not in directory - only warn if it's
+            # supposed to be in the .gwt directory
+            worktree_base = get_worktree_base(git_dir)
+            if git_path.startswith(worktree_base):
+                print(
+                    f"Warning: Branch '{branch}' found by git but not in worktree directory",
+                    file=sys.stderr,
+                )
             worktrees.append({"path": git_path, "branch": branch})
         elif dir_path:
             # Branch exists in directory but not reported by git
@@ -445,8 +531,30 @@ def remove_worktree(branch_name, git_dir):
             )
             sys.exit(1)
 
-        # Remove the worktree
-        run_git_command(["worktree", "remove", worktree_path], git_dir)
+        # Check if we're currently in the worktree being removed
+        current_dir = os.getcwd()
+        worktree_abs = os.path.abspath(worktree_path)
+        current_abs = os.path.abspath(current_dir)
+        
+        need_cd = False
+        if current_abs.startswith(worktree_abs + os.sep) or current_abs == worktree_abs:
+            need_cd = True
+            # Determine the safe directory based on repo type
+            git_dir_path = Path(git_dir).resolve()
+            
+            if git_dir_path.name == ".git" and git_dir_path.is_dir():
+                # Non-bare repo: git_dir is /path/to/repo/.git
+                # Safe dir should be the repo itself: /path/to/repo
+                safe_dir = str(git_dir_path.parent)
+            else:
+                # Bare repo: git_dir is /path/to/repo.git
+                # Safe dir should be parent of .gwt: /path/to
+                safe_dir = os.path.dirname(get_worktree_base(git_dir))
+            
+            print(f"You're in the worktree being removed. Will change to {safe_dir} after removal.", file=sys.stderr)
+
+        # Remove the worktree (don't capture output as it might prompt the user)
+        run_git_command(["worktree", "remove", worktree_path], git_dir, capture=False)
 
         # Then remove the branch if the user confirms
         # Print to stderr and flush to ensure prompt is visible immediately
@@ -458,10 +566,17 @@ def remove_worktree(branch_name, git_dir):
         sys.stderr.flush()
         confirm = input()
         if confirm.lower() == "y":
-            run_git_command(["branch", "-D", branch_name], git_dir)
+            # Change to safe directory first if needed, before trying to delete branch
+            if need_cd:
+                os.chdir(safe_dir)
+            run_git_command(["branch", "-D", branch_name], git_dir, capture=False)
             print(f"Branch '{branch_name}' has been deleted")
 
         print(f"Worktree for '{branch_name}' has been removed")
+        
+        # Output the cd command for the shell to execute if we were in the removed worktree
+        if need_cd:
+            print(f"cd {safe_dir}")
     except subprocess.CalledProcessError as e:
         print(f"Error removing worktree: {e}", file=sys.stderr)
         sys.exit(1)
@@ -471,21 +586,34 @@ def get_git_dir():
     """Get the git directory from either the environment variable or the config file.
 
     This is a common function to encapsulate the logic for determining the git dir.
+    Automatically appends .git for non-bare repositories.
 
     Returns:
         str: The git directory path, or None if not found
     """
     # First, check if GWT_GIT_DIR is set in the environment
     git_dir = os.environ.get("GWT_GIT_DIR")
-    if git_dir and os.path.isdir(git_dir):
-        return git_dir
+    if git_dir:
+        # Auto-detect if we need to append .git
+        if os.path.isdir(git_dir):
+            # Check if this is a non-bare repo (has .git subdirectory)
+            dot_git = os.path.join(git_dir, ".git")
+            if os.path.isdir(dot_git):
+                return dot_git
+            return git_dir
 
     # If not set in environment, check the config file if TOML is available
     if HAS_TOML:
         config = load_config()
         default_repo = config.get("default_repo")
-        if default_repo and os.path.isdir(default_repo):
-            return default_repo
+        if default_repo:
+            # Auto-detect if we need to append .git
+            if os.path.isdir(default_repo):
+                # Check if this is a non-bare repo (has .git subdirectory)
+                dot_git = os.path.join(default_repo, ".git")
+                if os.path.isdir(dot_git):
+                    return dot_git
+                return default_repo
 
     # If neither source provides a valid git dir, return None
     return None
@@ -549,15 +677,22 @@ def main():
     # Handle special commands that don't need a configured git dir
     if args.command == "repo":
         if args.git_dir:
+            # Auto-detect if we need to append .git for non-bare repos
+            git_dir = args.git_dir
+            if os.path.isdir(git_dir):
+                dot_git = os.path.join(git_dir, ".git")
+                if os.path.isdir(dot_git):
+                    git_dir = dot_git
+            
             # Set the git directory
-            print(f"GWT_GIT_DIR={args.git_dir}")
+            print(f"GWT_GIT_DIR={git_dir}")
 
             # Update the config if TOML is available
             if HAS_TOML:
                 config = load_config()
-                config["default_repo"] = args.git_dir
+                config["default_repo"] = git_dir
                 save_config(config)
-                print(f"Default repo set to {args.git_dir}", file=sys.stderr)
+                print(f"Default repo set to {git_dir}", file=sys.stderr)
             else:
                 print(
                     f"Note: Config file not updated (TOML support not available)",
