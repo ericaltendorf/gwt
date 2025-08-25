@@ -9,6 +9,7 @@ if [ ! -f "$PYTHON_SCRIPT" ]; then
     echo "Error: Python script not found at $PYTHON_SCRIPT" >&2
     echo "This could happen if the script was moved or renamed." >&2
     echo "Verify that the script is installed correctly." >&2
+    # shellcheck disable=SC2317
     return 1 2>/dev/null || exit 1
 fi
 
@@ -44,7 +45,7 @@ _gwt_completions() {
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         # Add space after command completion
         compopt +o nospace
-        COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
+        mapfile -t COMPREPLY < <(compgen -W "${commands}" -- "${cur}")
         return 0
     fi
 
@@ -58,7 +59,7 @@ _gwt_completions() {
             repo)
                 # Use directory completion for repo command
                 compopt -o filenames -o nospace
-                COMPREPLY=( $(compgen -d -- "${cur}") )
+                mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
                 return 0
                 ;;
             switch|s|remove|rm)
@@ -70,7 +71,7 @@ _gwt_completions() {
                     # Convert newlines to spaces for compgen
                     branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
                     
-                    COMPREPLY=( $(compgen -W "${branches}" -- "${cur}") )
+                    mapfile -t COMPREPLY < <(compgen -W "${branches}" -- "${cur}")
                 fi
                 return 0
                 ;;
@@ -91,27 +92,46 @@ _gwt_completions() {
 
 # Function to handle all gwt operations
 gwt() {
-    # Run the Python script and capture output
-    local output=$("$PYTHON_SCRIPT" "$@")
-    
-    # Parse the output for special commands
-    if [[ "$output" == cd* ]]; then
-        # Extract the directory path and change to it
-        local dir="${output#cd }"
-        cd "$dir" || echo "Failed to change directory to $dir"
-    elif [[ "$output" == GWT_GIT_DIR=* ]]; then
-        # Extract the git directory and set it
-        local dir="${output#GWT_GIT_DIR=}"
-        if [ -d "$dir" ]; then
-            export GWT_GIT_DIR="$dir"
-            echo "GWT_GIT_DIR set to $dir"
-        else
-            echo "Error: $dir is not a valid directory" >&2
-            return 1
+    # Check if this is an interactive command that shouldn't have output captured
+    if [[ "$1" == "remove" || "$1" == "rm" ]]; then
+        # Run interactively but capture the last line for potential cd command
+        # Use a temp file to capture output while still allowing interaction
+        local tmpfile
+        tmpfile=$(mktemp)
+        "$PYTHON_SCRIPT" "$@" | tee "$tmpfile"
+        local last_line
+        last_line=$(tail -n1 "$tmpfile")
+        rm "$tmpfile"
+        
+        # Check if the last line is a cd command
+        if [[ "$last_line" == cd* ]]; then
+            local dir="${last_line#cd }"
+            cd "$dir" || echo "Failed to change directory to $dir"
         fi
     else
-        # Just print the output
-        echo "$output"
+        # Run the Python script and capture output for non-interactive commands
+        local output
+        output=$("$PYTHON_SCRIPT" "$@")
+        
+        # Parse the output for special commands
+        if [[ "$output" == cd* ]]; then
+            # Extract the directory path and change to it
+            local dir="${output#cd }"
+            cd "$dir" || echo "Failed to change directory to $dir"
+        elif [[ "$output" == GWT_GIT_DIR=* ]]; then
+            # Extract the git directory and set it
+            local dir="${output#GWT_GIT_DIR=}"
+            if [ -d "$dir" ]; then
+                export GWT_GIT_DIR="$dir"
+                echo "GWT_GIT_DIR set to $dir"
+            else
+                echo "Error: $dir is not a valid directory" >&2
+                return 1
+            fi
+        else
+            # Just print the output
+            echo "$output"
+        fi
     fi
 }
 
