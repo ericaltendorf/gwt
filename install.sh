@@ -13,7 +13,9 @@ mkdir -p "$BIN_DIR"
 if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
     echo "WARNING: $HOME/.local/bin is not in your PATH"
     echo "You need to add it to use gwt. Add this to your shell config:"
+    # shellcheck disable=SC2016
     echo '  export PATH="$HOME/.local/bin:$PATH"  # for bash/zsh'
+    # shellcheck disable=SC2016
     echo '  fish_add_path $HOME/.local/bin         # for fish'
     echo ""
 fi
@@ -70,17 +72,21 @@ case "$USER_SHELL" in
         
         # Check if PATH needs to be updated for fish
         if ! grep -q "$HOME/.local/bin" "$FISH_CONFIG" 2>/dev/null; then
-            echo "" >> "$FISH_CONFIG"
-            echo "# Add ~/.local/bin to PATH" >> "$FISH_CONFIG"
-            echo "fish_add_path $HOME/.local/bin" >> "$FISH_CONFIG"
+            {
+                echo ""
+                echo "# Add ~/.local/bin to PATH"
+                echo "fish_add_path $HOME/.local/bin"
+            } >> "$FISH_CONFIG"
             echo "✓ Added ~/.local/bin to fish PATH"
         fi
         
         # Add gwt source
         if ! grep -q "gwt.fish" "$FISH_CONFIG" 2>/dev/null; then
-            echo "" >> "$FISH_CONFIG"
-            echo "# GWT setup" >> "$FISH_CONFIG"
-            echo "source \"$BIN_DIR/gwt.fish\"" >> "$FISH_CONFIG"
+            {
+                echo ""
+                echo "# GWT setup"
+                echo "source \"$BIN_DIR/gwt.fish\""
+            } >> "$FISH_CONFIG"
             echo "✓ Fish integration added"
         else
             echo "✓ Fish integration already configured"
@@ -92,17 +98,22 @@ case "$USER_SHELL" in
         
         # Check if PATH needs to be updated
         if ! grep -q "$HOME/.local/bin" "$RC_FILE" 2>/dev/null; then
-            echo "" >> "$RC_FILE"
-            echo "# Add ~/.local/bin to PATH" >> "$RC_FILE"
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
+            {
+                echo ""
+                echo "# Add ~/.local/bin to PATH"
+                # shellcheck disable=SC2016
+                echo 'export PATH="$HOME/.local/bin:$PATH"'
+            } >> "$RC_FILE"
             echo "✓ Added ~/.local/bin to PATH"
         fi
         
         # Add gwt source
         if ! grep -q "gwt.sh" "$RC_FILE" 2>/dev/null; then
-            echo "" >> "$RC_FILE"
-            echo "# GWT setup" >> "$RC_FILE"
-            echo "source \"$BIN_DIR/gwt.sh\"" >> "$RC_FILE"
+            {
+                echo ""
+                echo "# GWT setup"
+                echo "source \"$BIN_DIR/gwt.sh\""
+            } >> "$RC_FILE"
             echo "✓ Bash/Zsh integration added"
         else
             echo "✓ Bash/Zsh integration already configured"
