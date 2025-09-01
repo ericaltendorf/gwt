@@ -59,7 +59,9 @@ end
 function __gwt_complete_branches
     set -l SCRIPT_DIR (dirname (status -f))
     set -l PYTHON_SCRIPT "$SCRIPT_DIR/gwt.py"
-    $PYTHON_SCRIPT list --branches 2>/dev/null
+    # Try all branches first, fallback to worktrees
+    $PYTHON_SCRIPT list --branches all 2>/dev/null
+    or $PYTHON_SCRIPT list --branches worktrees 2>/dev/null
 end
 
 function __gwt_complete
@@ -67,7 +69,7 @@ function __gwt_complete
     set -l cur (commandline -ct)
     
     # Commands
-    set -l commands new track repo switch s list ls l remove rm
+    set -l commands repo switch s list ls l remove rm
     
     # Complete first argument with commands
     if test (count $cmd) -eq 1
@@ -87,4 +89,4 @@ function __gwt_complete
     end
 end
 
-complete -c gwt -f -a '(__gwt_complete)'
+complete -c gwt -f -k -a '(__gwt_complete)'

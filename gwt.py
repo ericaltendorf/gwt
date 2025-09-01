@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.8"
+# requires-python = ">=3.9"
 # dependencies = [
 #   "tomli>=2.0.0; python_version < '3.11'",
 #   "tomli-w>=1.0.0",
@@ -196,175 +196,212 @@ For more information, see: https://github.com/username/gwt
     return worktree_base
 
 
-def create_branch_and_worktree(branch_name, git_dir):
-    worktree_base = get_worktree_base(git_dir)
+def get_main_worktree_path(git_dir):
+    """Get the path to the main worktree."""
+    git_dir_path = Path(git_dir).resolve()
+    
+    if git_dir_path.name == ".git" and git_dir_path.is_dir():
+        # Non-bare repo: main worktree is parent of .git
+        return str(git_dir_path.parent)
+    else:
+        # Bare repo: no main worktree
+        return None
 
+
+def get_main_branch_name(git_dir):
+    """Get the name of the branch in the main worktree."""
     try:
-        # Create new branch (will fail if it already exists)
-        run_git_command(["branch", branch_name], git_dir)
-        # Add worktree
-        worktree_path = os.path.join(worktree_base, branch_name)
+        result = run_git_command(["worktree", "list"], git_dir)
+        lines = result.stdout.splitlines()
+        if lines:
+            # First line is main worktree
+            parts = lines[0].split()
+            if len(parts) >= 3:
+                return parts[2].strip("[]")
+    except:
+        pass
+    return None
+
+
+def branch_exists_locally(branch_name, git_dir):
+    """Check if a branch exists locally."""
+    result = subprocess.run(
+        ["git", f"--git-dir={git_dir}", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+        capture_output=True,
+        text=True
+    )
+    return result.returncode == 0
+
+
+def find_remote_branch(branch_name, git_dir):
+    """Find a remote branch matching the given name.
+    
+    Returns the full remote ref (e.g., 'origin/branch') or None.
+    """
+    # First, fetch all remotes to ensure we have latest
+    run_git_command(["remote", "update"], git_dir)
+    
+    # Look for matching remote branches
+    result = run_git_command(
+        ["for-each-ref", "--format=%(refname:short)", f"refs/remotes/*/{branch_name}"],
+        git_dir
+    )
+    
+    refs = result.stdout.strip().split('\n')
+    refs = [r for r in refs if r]  # Filter empty
+    
+    if len(refs) == 1:
+        return refs[0]
+    elif len(refs) > 1:
+        # Multiple remotes have this branch - prefer origin
+        for ref in refs:
+            if ref.startswith("origin/"):
+                return ref
+        # If no origin, return first
+        return refs[0]
+    
+    return None
+
+
+def create_worktree_for_branch(branch_name, git_dir, worktree_path):
+    """Create a worktree for an existing local branch."""
+    try:
         run_git_command(["worktree", "add", worktree_path, branch_name], git_dir)
-        print(
-            f"Created branch '{branch_name}' and worktree at {worktree_path}",
-            file=sys.stderr,
-        )
-
-        # Get the repo config to check for post-create commands
-        repo_config = get_repo_config(git_dir)
-        if repo_config.get("post_create_commands"):
-            print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
-            current_dir = os.getcwd()
-            try:
-                # Change to the worktree directory to run the commands
-                os.chdir(worktree_path)
-                for cmd in repo_config["post_create_commands"]:
-                    print(f"Running: {cmd}", file=sys.stderr)
-                    subprocess.run(cmd, shell=True, check=True)
-            except Exception as e:
-                print(f"Error running post-create commands: {e}", file=sys.stderr)
-            finally:
-                # Change back to the original directory
-                os.chdir(current_dir)
-
-        # Print the command to change directory (like switch_to_worktree does)
-        # The calling shell script will parse this and execute the cd
+        print(f"Created worktree at {worktree_path}", file=sys.stderr)
+        run_post_create_commands(git_dir, worktree_path, branch_name)
         print(f"cd {worktree_path}")
-
     except subprocess.CalledProcessError as e:
-        # Show git's actual error message if available
-        if hasattr(e, 'stderr') and e.stderr:
-            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
-        elif hasattr(e, 'stdout') and e.stdout:
-            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
-        else:
-            print(f"Error: {e}", file=sys.stderr)
+        handle_worktree_error(e, branch_name)
         sys.exit(1)
 
 
-def track_remote_branch(branch_name, git_dir, remote="origin"):
-    """Create a worktree that tracks a remote branch.
-    
-    First fetches the remote branch, then creates a local branch tracking the remote,
-    and sets up a worktree for it.
-    """
-    worktree_base = get_worktree_base(git_dir)
-    worktree_path = os.path.join(worktree_base, branch_name)
-    
+def create_tracking_worktree(branch_name, git_dir, remote_ref, worktree_path):
+    """Create a worktree that tracks a remote branch."""
     try:
-        # Fetch the remote branch
-        print(f"Fetching {remote}/{branch_name}...", file=sys.stderr)
-        run_git_command(["fetch", remote, branch_name], git_dir)
-        
-        # Create worktree with tracking branch
-        print(f"Creating worktree at {worktree_path}...", file=sys.stderr)
+        # Create local branch tracking the remote
         run_git_command(
-            ["worktree", "add", "-b", branch_name, worktree_path, f"{remote}/{branch_name}"],
+            ["worktree", "add", "-b", branch_name, worktree_path, remote_ref],
             git_dir
         )
-        print(
-            f"Created tracking branch '{branch_name}' for '{remote}/{branch_name}' and worktree at {worktree_path}",
-            file=sys.stderr,
-        )
-        
-        # Get the repo config to check for post-create commands
-        repo_config = get_repo_config(git_dir)
-        if repo_config.get("post_create_commands"):
-            print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
-            current_dir = os.getcwd()
-            try:
-                # Change to the worktree directory to run the commands
-                os.chdir(worktree_path)
-                for cmd in repo_config["post_create_commands"]:
-                    print(f"Running: {cmd}", file=sys.stderr)
-                    subprocess.run(cmd, shell=True, check=True)
-            except Exception as e:
-                print(f"Error running post-create commands: {e}", file=sys.stderr)
-            finally:
-                # Change back to the original directory
-                os.chdir(current_dir)
-
-        # Print the command to change directory (like switch_to_worktree does)
-        # The calling shell script will parse this and execute the cd
+        print(f"Branch '{branch_name}' set up to track '{remote_ref}'", file=sys.stderr)
+        print(f"Created worktree at {worktree_path}", file=sys.stderr)
+        run_post_create_commands(git_dir, worktree_path, branch_name)
         print(f"cd {worktree_path}")
-
     except subprocess.CalledProcessError as e:
-        # Show git's actual error message if available
-        if hasattr(e, 'stderr') and e.stderr:
-            print(f"Error: {e.stderr.strip()}", file=sys.stderr)
-        elif hasattr(e, 'stdout') and e.stdout:
-            print(f"Error: {e.stdout.strip()}", file=sys.stderr)
-        else:
-            print(f"Error: {e}", file=sys.stderr)
+        handle_worktree_error(e, branch_name)
         sys.exit(1)
 
 
-def switch_to_worktree(branch_name, git_dir):
-    # Use the standard worktree base directory
+def handle_worktree_error(e, branch_name):
+    """Handle errors from worktree creation."""
+    # Show git's actual error message if available
+    if hasattr(e, 'stderr') and e.stderr:
+        print(f"Error: {e.stderr.strip()}", file=sys.stderr)
+    elif hasattr(e, 'stdout') and e.stdout:
+        print(f"Error: {e.stdout.strip()}", file=sys.stderr)
+    else:
+        print(f"Error creating worktree for branch '{branch_name}': {e}", file=sys.stderr)
+
+
+def run_post_create_commands(git_dir, worktree_path, branch_name):
+    """Run post-create commands for a worktree."""
+    repo_config = get_repo_config(git_dir)
+    if repo_config.get("post_create_commands"):
+        print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
+        current_dir = os.getcwd()
+        try:
+            os.chdir(worktree_path)
+            for cmd in repo_config["post_create_commands"]:
+                print(f"Running: {cmd}", file=sys.stderr)
+                # Redirect stdout to stderr to not interfere with cd command
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if result.stdout:
+                    print(result.stdout, file=sys.stderr)
+                if result.stderr:
+                    print(result.stderr, file=sys.stderr)
+                if result.returncode != 0:
+                    raise subprocess.CalledProcessError(result.returncode, cmd)
+        except Exception as e:
+            print(f"Error running post-create commands: {e}", file=sys.stderr)
+        finally:
+            os.chdir(current_dir)
+
+
+
+
+
+
+def switch_branch(branch_name, git_dir, create=False, force_create=False, guess=True):
+    """Unified switch logic that handles all branch scenarios."""
     worktree_base = get_worktree_base(git_dir)
     worktree_path = os.path.join(worktree_base, branch_name)
+    
+    # Special handling for switching to main repo
+    if branch_name == get_main_branch_name(git_dir):
+        main_path = get_main_worktree_path(git_dir)
+        if main_path:
+            print(f"cd {main_path}")
+            return
+    
+    # Check if worktree already exists
+    worktrees = get_worktree_list(git_dir, include_main=True)
+    for wt in worktrees:
+        if wt["branch"] == branch_name:
+            print(f"cd {wt['path']}")
+            return
+    
+    # Handle create flags
+    if force_create:
+        # Force create new branch
+        try:
+            run_git_command(["branch", "-f", branch_name], git_dir)
+        except subprocess.CalledProcessError:
+            run_git_command(["branch", branch_name], git_dir)
+        create_worktree_for_branch(branch_name, git_dir, worktree_path)
+        return
+    
+    if create:
+        # Create new branch
+        try:
+            run_git_command(["branch", branch_name], git_dir)
+            create_worktree_for_branch(branch_name, git_dir, worktree_path)
+            return
+        except subprocess.CalledProcessError as e:
+            print(f"Error: Branch '{branch_name}' already exists", file=sys.stderr)
+            print(f"Use -C to force create", file=sys.stderr)
+            sys.exit(1)
+    
+    # Check if local branch exists
+    if branch_exists_locally(branch_name, git_dir):
+        create_worktree_for_branch(branch_name, git_dir, worktree_path)
+        return
+    
+    # Check remote branches if guess is enabled
+    if guess:
+        remote_ref = find_remote_branch(branch_name, git_dir)
+        if remote_ref:
+            create_tracking_worktree(branch_name, git_dir, remote_ref, worktree_path)
+            return
+    
+    # Branch doesn't exist
+    print(f"fatal: invalid reference: {branch_name}", file=sys.stderr)
+    if guess:
+        print(f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}", file=sys.stderr)
+    else:
+        print(f"hint: If you meant to check out a remote branch, use: gwt switch --guess {branch_name}", file=sys.stderr)
+        print(f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}", file=sys.stderr)
+    sys.exit(1)
 
-    if not os.path.isdir(worktree_path):
-        # Try to find the worktree using our shared function
-        worktrees = get_worktree_list(git_dir)
-
-        # Check if the branch exists but is in a different location
-        for worktree in worktrees:
-            if worktree["branch"] == branch_name:
-                worktree_path = worktree["path"]
-                break
-        else:
-            # Worktree not found - check if the branch exists
-            check_result = subprocess.run(
-                ["git", f"--git-dir={git_dir}", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
-                capture_output=True,
-                text=True
-            )
-            
-            if check_result.returncode == 0:
-                # Branch exists but no worktree - create the worktree
-                print(f"Branch '{branch_name}' exists but has no worktree. Creating worktree...", file=sys.stderr)
-                try:
-                    run_git_command(["worktree", "add", worktree_path, branch_name], git_dir)
-                    print(f"Created worktree at {worktree_path}", file=sys.stderr)
-                    
-                    # Run post-create commands if configured
-                    repo_config = get_repo_config(git_dir)
-                    if repo_config.get("post_create_commands"):
-                        print(f"Running post-create commands for {branch_name}...", file=sys.stderr)
-                        current_dir = os.getcwd()
-                        try:
-                            os.chdir(worktree_path)
-                            for cmd in repo_config["post_create_commands"]:
-                                print(f"Running: {cmd}", file=sys.stderr)
-                                subprocess.run(cmd, shell=True, check=True)
-                        except Exception as e:
-                            print(f"Error running post-create commands: {e}", file=sys.stderr)
-                        finally:
-                            os.chdir(current_dir)
-                            
-                except subprocess.CalledProcessError as e:
-                    if hasattr(e, 'stderr') and e.stderr:
-                        print(f"Error creating worktree: {e.stderr.strip()}", file=sys.stderr)
-                    else:
-                        print(f"Error creating worktree: {e}", file=sys.stderr)
-                    sys.exit(1)
-            else:
-                # Branch doesn't exist either
-                print(f"Error: Branch '{branch_name}' not found", file=sys.stderr)
-                print(f"To create a new branch with worktree, use: gwt new {branch_name}", file=sys.stderr)
-                sys.exit(1)
-
-    # Print the command to change directory
-    # The calling shell script will parse this and execute the cd
-    print(f"cd {worktree_path}")
 
 
-def get_git_worktrees(git_dir):
+def get_git_worktrees(git_dir, include_main=False):
     """Get worktrees as reported by git worktree list command.
 
     Returns a dict mapping branch names to their paths.
-    Excludes the main working tree (first entry).
+    
+    Args:
+        git_dir: Path to git directory
+        include_main: If True, include the main worktree in results
     """
     git_worktrees = {}
     try:
@@ -385,7 +422,7 @@ def get_git_worktrees(git_dir):
                 branch = branch_info.strip("[]")
                 
                 # Skip the first entry - it's the main working tree
-                if i == 0:
+                if i == 0 and not include_main:
                     continue
                     
                 # Skip detached HEAD worktrees
@@ -427,14 +464,18 @@ def get_directory_worktrees(git_dir):
         return dir_worktrees
 
 
-def get_worktree_list(git_dir):
+def get_worktree_list(git_dir, include_main=False):
     """Get a list of all worktrees for the repository, comparing git command output
     with directory examination.
 
+    Args:
+        git_dir: Path to git directory
+        include_main: If True, include the main worktree in results
+        
     Returns a list of dicts with 'path' and 'branch' keys.
     """
     # Get worktrees from both sources (already excludes main working tree)
-    git_worktrees = get_git_worktrees(git_dir)
+    git_worktrees = get_git_worktrees(git_dir, include_main=include_main)
     dir_worktrees = get_directory_worktrees(git_dir)
 
     # Combine results, reporting any discrepancies
@@ -511,6 +552,84 @@ def list_worktrees(git_dir, branches_only=False):
             print(f"Error: {e}", file=sys.stderr)
         # In branches-only mode, just return silently on error
         return
+
+
+def list_all_branches(git_dir, mode="all"):
+    """List branches for tab completion.
+    
+    Args:
+        mode: "all", "local", "worktrees"
+    """
+    branches = set()
+    
+    # Always include existing worktrees first (higher priority)
+    if mode in ["all", "worktrees"]:
+        worktrees = get_worktree_list(git_dir, include_main=True)
+        for wt in worktrees:
+            if wt["branch"]:
+                branches.add(wt["branch"])
+                if mode == "worktrees":
+                    print(wt["branch"])
+    
+    if mode == "worktrees":
+        return
+    
+    # Add local branches
+    if mode in ["all", "local"]:
+        try:
+            result = run_git_command(
+                ["for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+                git_dir
+            )
+            for branch in result.stdout.strip().split('\n'):
+                if branch:
+                    branches.add(branch)
+        except:
+            pass
+    
+    # Add remote branches (without remote prefix for completion)
+    if mode == "all":
+        try:
+            result = run_git_command(
+                ["for-each-ref", "--format=%(refname:short)", "refs/remotes/"],
+                git_dir
+            )
+            for ref in result.stdout.strip().split('\n'):
+                if ref and '/' in ref:
+                    # Extract branch name from remote/branch
+                    branch = ref.split('/', 1)[1]
+                    branches.add(branch)
+        except:
+            pass
+    
+    # Get branch categories for proper ordering
+    worktree_branches = {wt["branch"] for wt in get_worktree_list(git_dir, include_main=True) if wt.get("branch")}
+    
+    # Get local branches
+    local_branches = set()
+    try:
+        result = run_git_command(
+            ["for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+            git_dir
+        )
+        for branch in result.stdout.strip().split('\n'):
+            if branch:
+                local_branches.add(branch)
+    except:
+        pass
+    
+    # Categorize branches
+    worktree_list = sorted([b for b in branches if b in worktree_branches])
+    local_no_worktree_list = sorted([b for b in branches if b in local_branches and b not in worktree_branches])
+    remote_only_list = sorted([b for b in branches if b not in local_branches])
+    
+    # Output in order: worktrees, local branches, remote branches
+    for branch in worktree_list:
+        print(branch)
+    for branch in local_no_worktree_list:
+        print(branch)
+    for branch in remote_only_list:
+        print(branch)
 
 
 def remove_worktree(branch_name, git_dir):
@@ -623,18 +742,6 @@ def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Create a 'new' subcommand
-    new_parser = subparsers.add_parser("new", help="Create a new branch and worktree")
-    new_parser.add_argument("branch_name", help="Name of the new branch")
-
-    # Create a 'track' subcommand
-    track_parser = subparsers.add_parser("track", help="Create a worktree that tracks a remote branch")
-    track_parser.add_argument("branch_name", help="Name of the branch to track")
-    track_parser.add_argument(
-        "--remote", "-r", 
-        default="origin",
-        help="Remote to track (default: origin)"
-    )
 
     # Create a 'repo' subcommand
     repo_parser = subparsers.add_parser("repo", help="Set or show the git directory")
@@ -642,9 +749,26 @@ def main():
 
     # Create a 'switch' subcommand with 's' as alias
     switch_parser = subparsers.add_parser(
-        "switch", aliases=["s"], help="Switch to existing branch worktree"
+        "switch", aliases=["s"], help="Switch to or create branch worktree"
     )
     switch_parser.add_argument("branch_name", help="Name of the branch to switch to")
+    switch_parser.add_argument(
+        "-c", "--create", 
+        action="store_true",
+        help="Create a new branch before switching"
+    )
+    switch_parser.add_argument(
+        "-C", "--force-create",
+        action="store_true", 
+        help="Create a new branch, resetting if it exists"
+    )
+    switch_parser.add_argument(
+        "--guess", "--no-guess",
+        dest="guess",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Guess remote branch names (default: enabled)"
+    )
 
     # Create a 'remove' subcommand with 'rm' as alias
     remove_parser = subparsers.add_parser(
@@ -660,8 +784,10 @@ def main():
     )
     list_parser.add_argument(
         "--branches",
-        action="store_true",
-        help="List only branch names (for tab completion)",
+        choices=["all", "local", "worktrees"],
+        nargs="?",
+        const="all",
+        help="List branch names for completion (default: all)"
     )
     list_parser.add_argument(
         "--git-dir", help="Explicitly specify the git directory (for tab completion)"
@@ -753,27 +879,24 @@ def main():
         sys.exit(1)
 
     # Now pass git_dir to all functions that need it
-    if args.command == "new":
-        create_branch_and_worktree(args.branch_name, git_dir)
-    elif args.command == "track":
-        track_remote_branch(args.branch_name, git_dir, args.remote)
-    elif args.command == "repo":
+    if args.command == "repo":
         # Just print a message for the shell script to handle
         print(f"GWT_GIT_DIR={args.git_dir}")
     elif args.command in ["switch", "s"]:
-        switch_to_worktree(args.branch_name, git_dir)
+        switch_branch(
+            args.branch_name, 
+            git_dir,
+            create=getattr(args, "create", False),
+            force_create=getattr(args, "force_create", False),
+            guess=getattr(args, "guess", True)
+        )
     elif args.command in ["remove", "rm"]:
         remove_worktree(args.branch_name, git_dir)
     elif args.command in ["list", "ls", "l"]:
-        # Check if branches-only mode is requested
-        branches_only = hasattr(args, "branches") and args.branches
-        try:
-            list_worktrees(git_dir, branches_only=branches_only)
-        except Exception as e:
-            # When in branches-only mode, don't raise errors, just fail silently
-            if not branches_only:
-                print(f"Error listing worktrees: {e}", file=sys.stderr)
-                sys.exit(1)
+        if hasattr(args, "branches") and args.branches:
+            list_all_branches(git_dir, mode=args.branches)
+        else:
+            list_worktrees(git_dir, branches_only=False)
 
 
 if __name__ == "__main__":
