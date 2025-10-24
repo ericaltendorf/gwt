@@ -19,15 +19,17 @@ if [ ! -x "$PYTHON_SCRIPT" ]; then
 fi
 
 _gwt_get_branches() {
-    # Function to get list of branch names with worktrees
-    output=$("$PYTHON_SCRIPT" list --branches 2>&1)
+    # Function to get list of branch names
+    # Default to "all" branches for comprehensive completion
+    output=$("$PYTHON_SCRIPT" list --branches all 2>&1)
     result=$?
     
     if [ $result -eq 0 ]; then
         echo "$output"
     else
-        # Return empty to indicate failure
-        echo ""
+        # Fallback to worktrees only if all branches fails
+        output=$("$PYTHON_SCRIPT" list --branches worktrees 2>&1)
+        echo "$output"
     fi
 }
 
@@ -36,7 +38,7 @@ _gwt_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="new track repo switch s list ls l remove rm"
+    commands="repo switch s list ls l remove rm"
     
     # Don't use file completion as a fallback
     compopt -o nospace
@@ -52,10 +54,6 @@ _gwt_completions() {
     # For position 2, handle specific subcommand completions
     if [[ ${COMP_CWORD} -eq 2 ]]; then
         case "${prev}" in
-            new|track)
-                # No specific completions for new or track since they expect a branch name
-                return 0
-                ;;
             repo)
                 # Use directory completion for repo command
                 compopt -o filenames -o nospace
