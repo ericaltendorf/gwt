@@ -1,0 +1,27 @@
+{
+  "version": "2.0",
+  "mount_dirs": {
+    "thoughts": "thoughts",
+    "context": "context",
+    "references": "references"
+  },
+  "thoughts_mount": {
+    "remote": "git@github.com:General-Wisdom/thoughts.git",
+    "subpath": "repos/gwt/thoughts",
+    "sync": "auto"
+  },
+  "context_mounts": [
+    {
+      "remote": "git@github.com:General-Wisdom/thoughts.git",
+      "subpath": "repos/gwt/general",
+      "mount_path": "general",
+      "sync": "auto"
+    },
+    {
+      "remote": "git@github.com:General-Wisdom/thoughts.git",
+      "subpath": "linear_tickets",
+      "mount_path": "tickets",
+      "sync": "auto"
+    }
+  ]
+}
