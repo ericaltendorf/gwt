@@ -2,22 +2,31 @@
 
 (this is very new untested code -- please report bugs)
 
-An opinionated tool for rapidly working in git worktrees.  `gwt` makes
-it fast and easy to:
+An opinionated tool for rapidly working in git worktrees. `gwt` works like `git switch` but automatically manages worktrees. It makes it fast and easy to:
 
 - See all existing branch+worktrees in the current repo
 
   `gwt` or `gwt list` or `gwt ls`
 
-- Change directory to a branch+worktree [in the current repo]
+- Switch to a branch+worktree [in the current repo]
 
   `gwt switch branch-name` or `gwt s branch-name` 
   
-  (supports tab completion of existing branch+worktrees)
+  This command:
+  - Switches to existing worktree if it exists
+  - Creates worktree for existing local branch
+  - Auto-tracks remote branches (with --guess, enabled by default)
+  - Shows helpful error if branch doesn't exist
+  
+  (supports tab completion of ALL branches: worktrees, local, and remote)
 
 - Create a new branch+worktree [in the current repo]
 
-  `gwt --new branch-name`
+  `gwt switch -c branch-name` or `gwt s -c branch-name`
+  
+  Additional options:
+  - `-C` or `--force-create`: Create branch, resetting if it exists
+  - `--no-guess`: Disable remote branch auto-detection
 
 - Remove a worktree and optionally its branch
 
@@ -168,15 +177,28 @@ gwt list
 gwt ls
 ```
 
-Create a new branch and worktree:
-```
-gwt --new branch-name
-```
-
-Switch to an existing worktree:
+Switch to a branch (creates worktree if needed):
 ```
 gwt switch branch-name
 gwt s branch-name
+```
+
+Create a new branch and worktree:
+```
+gwt switch -c branch-name
+gwt s -c branch-name
+```
+
+Force create/reset a branch:
+```
+gwt switch -C branch-name
+```
+
+Switch to a remote branch (auto-tracks by default):
+```
+gwt switch remote-branch-name
+# Or explicitly disable remote detection:
+gwt switch --no-guess branch-name
 ```
 
 Set the git directory for future commands:
