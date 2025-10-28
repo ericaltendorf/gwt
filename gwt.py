@@ -142,7 +142,7 @@ def get_repo_config(git_dir):
 
 def run_git_command(cmd_args, git_dir, capture=True):
     """Run a git command using the specified git directory.
-    
+
     Args:
         cmd_args: List of git command arguments
         git_dir: Path to the git directory
@@ -166,7 +166,7 @@ def run_git_command(cmd_args, git_dir, capture=True):
 def get_worktree_base(git_dir):
     """Get the standard worktree base directory from git_dir."""
     git_dir_path = Path(git_dir).resolve()
-    
+
     # Check if this is a non-bare repo (ends with /.git subdirectory)
     if git_dir_path.name == ".git" and git_dir_path.is_dir():
         # Non-bare repo: /path/to/repo/.git -> /path/to/repo.gwt
@@ -200,7 +200,7 @@ For more information, see: https://github.com/username/gwt
 def get_main_worktree_path(git_dir):
     """Get the path to the main worktree."""
     git_dir_path = Path(git_dir).resolve()
-    
+
     if git_dir_path.name == ".git" and git_dir_path.is_dir():
         # Non-bare repo: main worktree is parent of .git
         return str(git_dir_path.parent)
@@ -219,7 +219,7 @@ def get_main_branch_name(git_dir):
             parts = lines[0].split()
             if len(parts) >= 3:
                 return parts[2].strip("[]")
-    except:
+    except Exception:
         pass
     return None
 
@@ -227,30 +227,36 @@ def get_main_branch_name(git_dir):
 def branch_exists_locally(branch_name, git_dir):
     """Check if a branch exists locally."""
     result = subprocess.run(
-        ["git", f"--git-dir={git_dir}", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+        [
+            "git",
+            f"--git-dir={git_dir}",
+            "rev-parse",
+            "--verify",
+            f"refs/heads/{branch_name}",
+        ],
         capture_output=True,
-        text=True
+        text=True,
     )
     return result.returncode == 0
 
 
 def find_remote_branch(branch_name, git_dir):
     """Find a remote branch matching the given name.
-    
+
     Returns the full remote ref (e.g., 'origin/branch') or None.
     """
     # First, fetch all remotes to ensure we have latest
     run_git_command(["remote", "update"], git_dir)
-    
+
     # Look for matching remote branches
     result = run_git_command(
         ["for-each-ref", "--format=%(refname:short)", f"refs/remotes/*/{branch_name}"],
-        git_dir
+        git_dir,
     )
-    
+
     refs = result.stdout.strip().split('\n')
     refs = [r for r in refs if r]  # Filter empty
-    
+
     if len(refs) == 1:
         return refs[0]
     elif len(refs) > 1:
@@ -260,7 +266,7 @@ def find_remote_branch(branch_name, git_dir):
                 return ref
         # If no origin, return first
         return refs[0]
-    
+
     return None
 
 
@@ -281,8 +287,7 @@ def create_tracking_worktree(branch_name, git_dir, remote_ref, worktree_path):
     try:
         # Create local branch tracking the remote
         run_git_command(
-            ["worktree", "add", "-b", branch_name, worktree_path, remote_ref],
-            git_dir
+            ["worktree", "add", "-b", branch_name, worktree_path, remote_ref], git_dir
         )
         print(f"Branch '{branch_name}' set up to track '{remote_ref}'", file=sys.stderr)
         print(f"Created worktree at {worktree_path}", file=sys.stderr)
@@ -301,7 +306,9 @@ def handle_worktree_error(e, branch_name):
     elif hasattr(e, 'stdout') and e.stdout:
         print(f"Error: {e.stdout.strip()}", file=sys.stderr)
     else:
-        print(f"Error creating worktree for branch '{branch_name}': {e}", file=sys.stderr)
+        print(
+            f"Error creating worktree for branch '{branch_name}': {e}", file=sys.stderr
+        )
 
 
 def run_post_create_commands(git_dir, worktree_path, branch_name):
@@ -328,29 +335,25 @@ def run_post_create_commands(git_dir, worktree_path, branch_name):
             os.chdir(current_dir)
 
 
-
-
-
-
 def switch_branch(branch_name, git_dir, create=False, force_create=False, guess=True):
     """Unified switch logic that handles all branch scenarios."""
     worktree_base = get_worktree_base(git_dir)
     worktree_path = os.path.join(worktree_base, branch_name)
-    
+
     # Special handling for switching to main repo
     if branch_name == get_main_branch_name(git_dir):
         main_path = get_main_worktree_path(git_dir)
         if main_path:
             print(f"cd {main_path}")
             return
-    
+
     # Check if worktree already exists
     worktrees = get_worktree_list(git_dir, include_main=True)
     for wt in worktrees:
         if wt["branch"] == branch_name:
             print(f"cd {wt['path']}")
             return
-    
+
     # Handle create flags
     if force_create:
         # Force create new branch
@@ -360,39 +363,47 @@ def switch_branch(branch_name, git_dir, create=False, force_create=False, guess=
             run_git_command(["branch", branch_name], git_dir)
         create_worktree_for_branch(branch_name, git_dir, worktree_path)
         return
-    
+
     if create:
         # Create new branch
         try:
             run_git_command(["branch", branch_name], git_dir)
             create_worktree_for_branch(branch_name, git_dir, worktree_path)
             return
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             print(f"Error: Branch '{branch_name}' already exists", file=sys.stderr)
-            print(f"Use -C to force create", file=sys.stderr)
+            print("Use -C to force create", file=sys.stderr)
             sys.exit(1)
-    
+
     # Check if local branch exists
     if branch_exists_locally(branch_name, git_dir):
         create_worktree_for_branch(branch_name, git_dir, worktree_path)
         return
-    
+
     # Check remote branches if guess is enabled
     if guess:
         remote_ref = find_remote_branch(branch_name, git_dir)
         if remote_ref:
             create_tracking_worktree(branch_name, git_dir, remote_ref, worktree_path)
             return
-    
+
     # Branch doesn't exist
     print(f"fatal: invalid reference: {branch_name}", file=sys.stderr)
     if guess:
-        print(f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}", file=sys.stderr)
+        print(
+            f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}",
+            file=sys.stderr,
+        )
     else:
-        print(f"hint: If you meant to check out a remote branch, use: gwt switch --guess {branch_name}", file=sys.stderr)
-        print(f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}", file=sys.stderr)
+        print(
+            f"hint: If you meant to check out a remote branch, use: gwt switch --guess {branch_name}",
+            file=sys.stderr,
+        )
+        print(
+            f"hint: If you meant to create a new branch, use: gwt switch -c {branch_name}",
+            file=sys.stderr,
+        )
     sys.exit(1)
-
 
 
 def parse_worktree_porcelain(git_dir, include_main=True):
@@ -412,7 +423,9 @@ def parse_worktree_porcelain(git_dir, include_main=True):
     try:
         res = subprocess.run(
             ["git", f"--git-dir={git_dir}", "worktree", "list", "--porcelain"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except subprocess.CalledProcessError:
         return None
@@ -434,7 +447,7 @@ def parse_worktree_porcelain(git_dir, include_main=True):
         block.setdefault("branch", None)
         block.setdefault("locked", False)
         block.setdefault("prunable", False)
-        block["detached"] = (block.get("branch") == "(detached)")
+        block["detached"] = block.get("branch") == "(detached)"
         if not main_marked:
             block["is_main"] = True
             main_marked = True
@@ -461,7 +474,7 @@ def parse_worktree_porcelain(git_dir, include_main=True):
             if ref == "(detached)":
                 block["branch"] = "(detached)"
             elif ref.startswith("refs/heads/"):
-                block["branch"] = ref[len("refs/heads/"):]
+                block["branch"] = ref[len("refs/heads/") :]
             else:
                 block["branch"] = ref  # fallback
         elif ln.startswith("locked"):
@@ -487,7 +500,9 @@ def parse_worktree_legacy(git_dir, include_main=True):
     try:
         res = subprocess.run(
             ["git", f"--git-dir={git_dir}", "worktree", "list"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except subprocess.CalledProcessError:
         return []
@@ -514,21 +529,25 @@ def parse_worktree_legacy(git_dir, include_main=True):
             try:
                 sha_res = subprocess.run(
                     ["git", "-C", path, "rev-parse", "--short=10", "HEAD"],
-                    capture_output=True, text=True, check=True
+                    capture_output=True,
+                    text=True,
+                    check=True,
                 )
                 head = sha_res.stdout.strip()
             except subprocess.CalledProcessError:
                 head = ""
 
-            entries.append({
-                "path": path,
-                "head": head,
-                "branch": branch,
-                "is_main": (i == 0),
-                "locked": False,
-                "prunable": False,
-                "detached": (branch == "(detached)"),
-            })
+            entries.append(
+                {
+                    "path": path,
+                    "head": head,
+                    "branch": branch,
+                    "is_main": (i == 0),
+                    "locked": False,
+                    "prunable": False,
+                    "detached": (branch == "(detached)"),
+                }
+            )
     return entries
 
 
@@ -558,11 +577,11 @@ def get_git_worktrees(git_dir, include_main=False):
                 branch_info = parts[2]
                 # Extract branch name from [branch] format
                 branch = branch_info.strip("[]")
-                
+
                 # Skip the first entry - it's the main working tree
                 if i == 0 and not include_main:
                     continue
-                    
+
                 # Skip detached HEAD worktrees
                 if branch != "(detached)" and not branch.startswith("(HEAD"):
                     git_worktrees[branch] = path
@@ -613,6 +632,7 @@ def get_worktree_list(git_dir, include_main=False, warnings=None):
 
     Returns a list of dicts with 'path' and 'branch' keys.
     """
+
     def warn(msg):
         if warnings is not None:
             warnings.append(msg)
@@ -645,11 +665,15 @@ def get_worktree_list(git_dir, include_main=False, warnings=None):
             # supposed to be in the .gwt directory
             worktree_base = get_worktree_base(git_dir)
             if git_path.startswith(worktree_base):
-                warn(f"Warning: Branch '{branch}' found by git but not in worktree directory")
+                warn(
+                    f"Warning: Branch '{branch}' found by git but not in worktree directory"
+                )
             worktrees.append({"path": git_path, "branch": branch})
         elif dir_path:
             # Branch exists in directory but not reported by git
-            warn(f"Warning: Directory '{branch}' exists in worktree path but not recognized by git")
+            warn(
+                f"Warning: Directory '{branch}' exists in worktree path but not recognized by git"
+            )
             # Don't add to the list as it's not a valid worktree according to git
 
     return worktrees
@@ -688,7 +712,9 @@ class ColorMode:
     NEVER = "never"
 
 
-def format_worktree_rows(entries, git_dir, show_status=False, color_mode="auto", force_absolute=False):
+def format_worktree_rows(
+    entries, git_dir, show_status=False, color_mode="auto", force_absolute=False
+):
     """
     entries: list of dicts from parse_worktree_porcelain/legacy
     Returns list[str] lines (without newline), formatted for pretty output.
@@ -718,7 +744,9 @@ def format_worktree_rows(entries, git_dir, show_status=False, color_mode="auto",
         try:
             r = subprocess.run(
                 ["git", "-C", path, "status", "--porcelain", "-uno"],
-                capture_output=True, text=True, check=True
+                capture_output=True,
+                text=True,
+                check=True,
             )
             return bool(r.stdout.strip())
         except subprocess.CalledProcessError:
@@ -781,7 +809,7 @@ def format_worktree_rows(entries, git_dir, show_status=False, color_mode="auto",
                 return s.ljust(w)
             if w <= 1:
                 return s[:w]
-            return s[:max(0, w - 1)] + "…"
+            return s[: max(0, w - 1)] + "…"
 
         # Truncate BEFORE applying colors
         branch_cell = trunc(branch, branch_width)
@@ -817,7 +845,7 @@ def list_worktrees(
     no_warn=False,
     show_status=False,
     color=ColorMode.AUTO,
-    absolute=False
+    absolute=False,
 ):
     """
     Pretty list to stderr by default. stdout remains empty unless branches_only is True.
@@ -836,7 +864,9 @@ def list_worktrees(
             try:
                 res = subprocess.run(
                     ["git", f"--git-dir={git_dir}", "worktree", "list"],
-                    check=True, capture_output=True, text=True
+                    check=True,
+                    capture_output=True,
+                    text=True,
                 )
                 if res.stdout:
                     print(res.stdout, file=sys.stderr, end="")
@@ -849,7 +879,11 @@ def list_worktrees(
         # Collect warnings for summary
         warnings = [] if not no_warn else None
         # Check integrity by invoking the existing reconciliation
-        _ = get_worktree_list(git_dir, include_main=False, warnings=warnings if warnings is not None else [])
+        _ = get_worktree_list(
+            git_dir,
+            include_main=False,
+            warnings=warnings if warnings is not None else [],
+        )
 
         # Parse porcelain entries (include main)
         entries = parse_worktree_porcelain(git_dir, include_main=True)
@@ -869,7 +903,7 @@ def list_worktrees(
             git_dir=git_dir,
             show_status=show_status,
             color_mode=color,
-            force_absolute=absolute
+            force_absolute=absolute,
         )
         for ln in lines:
             print(ln, file=sys.stderr)
@@ -884,7 +918,10 @@ def list_worktrees(
             else:
                 n = len(warnings)
                 print("", file=sys.stderr)
-                print(f"Notes: {n} integrity issue{'s' if n != 1 else ''}. Use -v for details.", file=sys.stderr)
+                print(
+                    f"Notes: {n} integrity issue{'s' if n != 1 else ''}. Use -v for details.",
+                    file=sys.stderr,
+                )
 
     except Exception as e:
         if not branches_only:
@@ -916,49 +953,52 @@ def list_all_branches(git_dir, mode="all"):
     if mode in ["all", "local"]:
         try:
             result = run_git_command(
-                ["for-each-ref", "--format=%(refname:short)", "refs/heads/"],
-                git_dir
+                ["for-each-ref", "--format=%(refname:short)", "refs/heads/"], git_dir
             )
             for branch in result.stdout.strip().split('\n'):
                 if branch:
                     branches.add(branch)
-        except:
+        except Exception:
             pass
 
     # Add remote branches (without remote prefix for completion)
     if mode == "all":
         try:
             result = run_git_command(
-                ["for-each-ref", "--format=%(refname:short)", "refs/remotes/"],
-                git_dir
+                ["for-each-ref", "--format=%(refname:short)", "refs/remotes/"], git_dir
             )
             for ref in result.stdout.strip().split('\n'):
                 if ref and '/' in ref:
                     # Extract branch name from remote/branch
                     branch = ref.split('/', 1)[1]
                     branches.add(branch)
-        except:
+        except Exception:
             pass
 
     # Get branch categories for proper ordering
-    worktree_branches = {wt["branch"] for wt in get_worktree_list(git_dir, include_main=True, warnings=[]) if wt.get("branch")}
+    worktree_branches = {
+        wt["branch"]
+        for wt in get_worktree_list(git_dir, include_main=True, warnings=[])
+        if wt.get("branch")
+    }
 
     # Get local branches
     local_branches = set()
     try:
         result = run_git_command(
-            ["for-each-ref", "--format=%(refname:short)", "refs/heads/"],
-            git_dir
+            ["for-each-ref", "--format=%(refname:short)", "refs/heads/"], git_dir
         )
         for branch in result.stdout.strip().split('\n'):
             if branch:
                 local_branches.add(branch)
-    except:
+    except Exception:
         pass
 
     # Categorize branches
     worktree_list = sorted([b for b in branches if b in worktree_branches])
-    local_no_worktree_list = sorted([b for b in branches if b in local_branches and b not in worktree_branches])
+    local_no_worktree_list = sorted(
+        [b for b in branches if b in local_branches and b not in worktree_branches]
+    )
     remote_only_list = sorted([b for b in branches if b not in local_branches])
 
     # Output in order: worktrees, local branches, remote branches
@@ -992,13 +1032,13 @@ def remove_worktree(branch_name, git_dir):
         current_dir = os.getcwd()
         worktree_abs = os.path.abspath(worktree_path)
         current_abs = os.path.abspath(current_dir)
-        
+
         need_cd = False
         if current_abs.startswith(worktree_abs + os.sep) or current_abs == worktree_abs:
             need_cd = True
             # Determine the safe directory based on repo type
             git_dir_path = Path(git_dir).resolve()
-            
+
             if git_dir_path.name == ".git" and git_dir_path.is_dir():
                 # Non-bare repo: git_dir is /path/to/repo/.git
                 # Safe dir should be the repo itself: /path/to/repo
@@ -1007,8 +1047,11 @@ def remove_worktree(branch_name, git_dir):
                 # Bare repo: git_dir is /path/to/repo.git
                 # Safe dir should be parent of .gwt: /path/to
                 safe_dir = os.path.dirname(get_worktree_base(git_dir))
-            
-            print(f"You're in the worktree being removed. Will change to {safe_dir} after removal.", file=sys.stderr)
+
+            print(
+                f"You're in the worktree being removed. Will change to {safe_dir} after removal.",
+                file=sys.stderr,
+            )
 
         # Remove the worktree (don't capture output as it might prompt the user)
         run_git_command(["worktree", "remove", worktree_path], git_dir, capture=False)
@@ -1030,7 +1073,7 @@ def remove_worktree(branch_name, git_dir):
             print(f"Branch '{branch_name}' has been deleted")
 
         print(f"Worktree for '{branch_name}' has been removed")
-        
+
         # Output the cd command for the shell to execute if we were in the removed worktree
         if need_cd:
             print(f"cd {safe_dir}")
@@ -1080,10 +1123,11 @@ def main():
     parser = argparse.ArgumentParser(description="Git worktree wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-
     # Create a 'repo' subcommand
     repo_parser = subparsers.add_parser("repo", help="Set or show the git directory")
-    repo_parser.add_argument("git_dir", nargs="?", help="Path to the git directory (omit to show current)")
+    repo_parser.add_argument(
+        "git_dir", nargs="?", help="Path to the git directory (omit to show current)"
+    )
 
     # Create a 'switch' subcommand with 's' as alias
     switch_parser = subparsers.add_parser(
@@ -1091,21 +1135,24 @@ def main():
     )
     switch_parser.add_argument("branch_name", help="Name of the branch to switch to")
     switch_parser.add_argument(
-        "-c", "--create", 
+        "-c",
+        "--create",
         action="store_true",
-        help="Create a new branch before switching"
+        help="Create a new branch before switching",
     )
     switch_parser.add_argument(
-        "-C", "--force-create",
-        action="store_true", 
-        help="Create a new branch, resetting if it exists"
+        "-C",
+        "--force-create",
+        action="store_true",
+        help="Create a new branch, resetting if it exists",
     )
     switch_parser.add_argument(
-        "--guess", "--no-guess",
+        "--guess",
+        "--no-guess",
         dest="guess",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Guess remote branch names (default: enabled)"
+        help="Guess remote branch names (default: enabled)",
     )
 
     # Create a 'remove' subcommand with 'rm' as alias
@@ -1125,27 +1172,39 @@ def main():
         choices=["all", "local", "worktrees"],
         nargs="?",
         const="all",
-        help="List branch names for completion (default: all)"
+        help="List branch names for completion (default: all)",
     )
     list_parser.add_argument(
         "--git-dir", help="Explicitly specify the git directory (for tab completion)"
     )
 
     # New flags
-    list_parser.add_argument("--raw", action="store_true", help="Show raw `git worktree list` output")
-    list_parser.add_argument("-v", "--verbose", action="store_true", help="Show detailed warnings (if any)")
+    list_parser.add_argument(
+        "--raw", action="store_true", help="Show raw `git worktree list` output"
+    )
+    list_parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show detailed warnings (if any)"
+    )
     list_parser.add_argument("--no-warn", action="store_true", help="Suppress warnings")
-    list_parser.add_argument("--status", action="store_true", help="Show '!' marker for dirty worktrees (slower)")
+    list_parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show '!' marker for dirty worktrees (slower)",
+    )
     list_parser.add_argument(
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
-        help="Colorize output: auto (default), always, or never"
+        help="Colorize output: auto (default), always, or never",
     )
-    list_parser.add_argument("--absolute", action="store_true", help="Show absolute paths instead of relative")
+    list_parser.add_argument(
+        "--absolute",
+        action="store_true",
+        help="Show absolute paths instead of relative",
+    )
 
     # Special command to get the default repository from config
-    get_repo_parser = subparsers.add_parser(
+    _get_repo_parser = subparsers.add_parser(
         "get-repo", help="Get the default repository from config (internal use)"
     )
 
@@ -1160,7 +1219,7 @@ def main():
                 dot_git = os.path.join(git_dir, ".git")
                 if os.path.isdir(dot_git):
                     git_dir = dot_git
-            
+
             # Set the git directory
             print(f"GWT_GIT_DIR={git_dir}")
 
@@ -1172,7 +1231,7 @@ def main():
                 print(f"Default repo set to {git_dir}", file=sys.stderr)
             else:
                 print(
-                    f"Note: Config file not updated (TOML support not available)",
+                    "Note: Config file not updated (TOML support not available)",
                     file=sys.stderr,
                 )
         else:
@@ -1235,11 +1294,11 @@ def main():
         print(f"GWT_GIT_DIR={args.git_dir}")
     elif args.command in ["switch", "s"]:
         switch_branch(
-            args.branch_name, 
+            args.branch_name,
             git_dir,
             create=getattr(args, "create", False),
             force_create=getattr(args, "force_create", False),
-            guess=getattr(args, "guess", True)
+            guess=getattr(args, "guess", True),
         )
     elif args.command in ["remove", "rm"]:
         remove_worktree(args.branch_name, git_dir)
