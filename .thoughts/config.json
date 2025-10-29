@@ -23,5 +23,11 @@
       "mount_path": "tickets",
       "sync": "auto"
     }
+  ],
+  "references": [
+    "git@github.com:General-Wisdom/monorepo.git",
+    "https://github.com/astral-sh/ty.git",
+    "https://github.com/astral-sh/docs.git",
+    "https://github.com/astral-sh/ruff.git"
   ]
 }
