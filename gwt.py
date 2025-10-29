@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional, cast
 
 # Try to import TOML libraries, but fall back to no-op config if unavailable
 try:
@@ -21,7 +22,8 @@ try:
         import tomllib as tomli
     else:
         import tomli
-    import tomli_w
+    # ty cannot resolve PEP 723 inline dependencies; usage guarded by HAS_TOML
+    import tomli_w  # type: ignore
 
     HAS_TOML = True
 except ImportError:
@@ -163,7 +165,7 @@ def run_git_command(cmd_args, git_dir, capture=True):
         return subprocess.run(cmd, check=True)
 
 
-def get_worktree_base(git_dir):
+def get_worktree_base(git_dir: str) -> str:
     """Get the standard worktree base directory from git_dir."""
     git_dir_path = Path(git_dir).resolve()
 
@@ -197,7 +199,7 @@ For more information, see: https://github.com/username/gwt
     return worktree_base
 
 
-def get_main_worktree_path(git_dir):
+def get_main_worktree_path(git_dir: str) -> Optional[str]:
     """Get the path to the main worktree."""
     git_dir_path = Path(git_dir).resolve()
 
@@ -702,7 +704,7 @@ def rel_display_path(path: str, git_dir: str, force_absolute: bool) -> str:
         return os.path.abspath(path)
     # For .gwt entries, show base-relative path if inside base
     if base and os.path.abspath(path).startswith(os.path.abspath(base) + os.sep):
-        return os.path.relpath(path, os.path.dirname(base))
+        return cast(str, os.path.relpath(path, os.path.dirname(base)))
     return os.path.abspath(path)
 
 
@@ -1010,13 +1012,13 @@ def list_all_branches(git_dir, mode="all"):
         print(branch)
 
 
-def remove_worktree(branch_name, git_dir):
+def remove_worktree(branch_name: str, git_dir: str) -> None:
     try:
         # Find the worktree path using our shared function
         worktrees = get_worktree_list(git_dir)
 
         # Find the worktree for this branch
-        worktree_path = None
+        worktree_path: Optional[str] = None
         for worktree in worktrees:
             if worktree["branch"] == branch_name:
                 worktree_path = worktree["path"]
@@ -1027,6 +1029,8 @@ def remove_worktree(branch_name, git_dir):
                 f"Error: Worktree for branch '{branch_name}' not found", file=sys.stderr
             )
             sys.exit(1)
+        # Narrow type for static checkers and add runtime safety
+        assert worktree_path is not None
 
         # Check if we're currently in the worktree being removed
         current_dir = os.getcwd()
@@ -1082,14 +1086,14 @@ def remove_worktree(branch_name, git_dir):
         sys.exit(1)
 
 
-def get_git_dir():
+def get_git_dir() -> Optional[str]:
     """Get the git directory from either the environment variable or the config file.
 
     This is a common function to encapsulate the logic for determining the git dir.
     Automatically appends .git for non-bare repositories.
 
     Returns:
-        str: The git directory path, or None if not found
+        The git directory path, or None if not found
     """
     # First, check if GWT_GIT_DIR is set in the environment
     git_dir = os.environ.get("GWT_GIT_DIR")
@@ -1287,6 +1291,8 @@ def main():
                 "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
             )
         sys.exit(1)
+    # Narrow type for static checkers
+    assert git_dir is not None
 
     # Now pass git_dir to all functions that need it
     if args.command == "repo":
