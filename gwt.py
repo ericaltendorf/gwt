@@ -931,24 +931,56 @@ def list_worktrees(
         return
 
 
-def list_all_branches(git_dir, mode="all"):
+def list_all_branches(git_dir, mode="all", annotate=None):
     """List branches for tab completion.
 
     Args:
         mode: "all", "local", "worktrees"
+        annotate: None | "bash" | "fish"
     """
     branches = set()
 
-    # Always include existing worktrees first (higher priority)
+    # Collect worktree branches (exclude main for worktrees mode)
     if mode in ["all", "worktrees"]:
-        worktrees = get_worktree_list(git_dir, include_main=True, warnings=[])
+        include_main_wt = mode == "all"
+        worktrees = get_worktree_list(
+            git_dir, include_main=include_main_wt, warnings=[]
+        )
+        wt_branches = []
         for wt in worktrees:
             if wt["branch"]:
                 branches.add(wt["branch"])
-                if mode == "worktrees":
-                    print(wt["branch"])
+                wt_branches.append(wt["branch"])
+
+    # Helper function to print branch with annotation
+    def print_branch(b, kind):
+        if annotate is None:
+            print(b)
+            return
+        if annotate == "fish":
+            # Fish supports "word<TAB>description"
+            if kind == "worktree":
+                desc = "● worktree"
+            elif kind == "local":
+                desc = "○ local"
+            else:
+                desc = "⊙ remote"
+            print(f"{b}\t{desc}")
+        elif annotate == "bash":
+            # Bash: prefix with symbol (insertion will include symbol; stripped by wrapper)
+            if kind == "worktree":
+                print(f"● {b}")
+            elif kind == "local":
+                print(f"○ {b}")
+            else:
+                print(f"⊙ {b}")
+        else:
+            print(b)
 
     if mode == "worktrees":
+        # Only print worktree branch names (excluding main)
+        for b in sorted(wt_branches):
+            print_branch(b, "worktree")
         return
 
     # Add local branches
@@ -977,7 +1009,7 @@ def list_all_branches(git_dir, mode="all"):
         except Exception:
             pass
 
-    # Get branch categories for proper ordering
+    # Get branch categories for proper ordering (include main for mode="all")
     worktree_branches = {
         wt["branch"]
         for wt in get_worktree_list(git_dir, include_main=True, warnings=[])
@@ -1005,11 +1037,11 @@ def list_all_branches(git_dir, mode="all"):
 
     # Output in order: worktrees, local branches, remote branches
     for branch in worktree_list:
-        print(branch)
+        print_branch(branch, "worktree")
     for branch in local_no_worktree_list:
-        print(branch)
+        print_branch(branch, "local")
     for branch in remote_only_list:
-        print(branch)
+        print_branch(branch, "remote")
 
 
 def remove_worktree(branch_name: str, git_dir: str) -> None:
@@ -1086,6 +1118,85 @@ def remove_worktree(branch_name: str, git_dir: str) -> None:
         sys.exit(1)
 
 
+def auto_detect_git_dir(cwd: Optional[str] = None) -> Optional[str]:
+    """Return absolute path to the git common dir for current directory, or None if not in a git repo.
+    Uses: git rev-parse --git-common-dir
+    Works for subdirs, worktrees, bare repos, and submodules.
+    """
+    try:
+        run_cwd = cwd or os.getcwd()
+        res = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=run_cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        out = res.stdout.strip()
+        if not out:
+            return None
+        # rev-parse may return relative path (e.g. .git), normalize to absolute
+        if not os.path.isabs(out):
+            out = os.path.abspath(os.path.join(run_cwd, out))
+        if os.path.isdir(out):
+            return out
+        return None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _normalize_repo_path(p: str) -> str:
+    """Auto-append .git for non-bare repositories when given a repo root directory."""
+    if os.path.isdir(p):
+        dot_git = os.path.join(p, ".git")
+        if os.path.isdir(dot_git):
+            return dot_git
+    return p
+
+
+def get_git_dir_with_source(explicit_git_dir: Optional[str] = None):
+    """Resolve git dir with priority:
+    1) explicit_git_dir (CLI) if provided
+    2) auto-detect via current directory
+    3) env var GWT_GIT_DIR
+    4) config default_repo
+    Returns (git_dir:str|None, source:str|None, meta:dict).
+    meta contains useful info for error messages.
+    """
+    meta = {"env": os.environ.get("GWT_GIT_DIR"), "config": None}
+    if HAS_TOML:
+        cfg = load_config()
+        meta["config"] = cfg.get("default_repo")
+
+    # 1) Explicit (for list completion only)
+    if explicit_git_dir:
+        gd = _normalize_repo_path(explicit_git_dir)
+        return (gd, "arg", meta)
+
+    # 2) Auto-detect
+    gd_auto = auto_detect_git_dir()
+    if gd_auto:
+        return (gd_auto, "auto", meta)
+
+    # 3) Env var
+    if meta["env"]:
+        gd_env = _normalize_repo_path(meta["env"])
+        if os.path.isdir(gd_env):
+            return (gd_env, "env", meta)
+        # If invalid, return with source and let caller error out
+        return (None, "env_invalid", meta)
+
+    # 4) Config
+    if meta["config"]:
+        gd_cfg = _normalize_repo_path(meta["config"])
+        if os.path.isdir(gd_cfg):
+            return (gd_cfg, "config", meta)
+        return (None, "config_invalid", meta)
+
+    return (None, None, meta)
+
+
+# Backward-compatible wrapper
 def get_git_dir() -> Optional[str]:
     """Get the git directory from either the environment variable or the config file.
 
@@ -1095,32 +1206,8 @@ def get_git_dir() -> Optional[str]:
     Returns:
         The git directory path, or None if not found
     """
-    # First, check if GWT_GIT_DIR is set in the environment
-    git_dir = os.environ.get("GWT_GIT_DIR")
-    if git_dir:
-        # Auto-detect if we need to append .git
-        if os.path.isdir(git_dir):
-            # Check if this is a non-bare repo (has .git subdirectory)
-            dot_git = os.path.join(git_dir, ".git")
-            if os.path.isdir(dot_git):
-                return dot_git
-            return git_dir
-
-    # If not set in environment, check the config file if TOML is available
-    if HAS_TOML:
-        config = load_config()
-        default_repo = config.get("default_repo")
-        if default_repo:
-            # Auto-detect if we need to append .git
-            if os.path.isdir(default_repo):
-                # Check if this is a non-bare repo (has .git subdirectory)
-                dot_git = os.path.join(default_repo, ".git")
-                if os.path.isdir(dot_git):
-                    return dot_git
-                return default_repo
-
-    # If neither source provides a valid git dir, return None
-    return None
+    gd, _, _ = get_git_dir_with_source()
+    return gd
 
 
 def main():
@@ -1206,6 +1293,12 @@ def main():
         action="store_true",
         help="Show absolute paths instead of relative",
     )
+    list_parser.add_argument(
+        "--annotate",
+        choices=["none", "bash", "fish"],
+        default="none",
+        help="Annotate branch completion output for shells",
+    )
 
     # Special command to get the default repository from config
     _get_repo_parser = subparsers.add_parser(
@@ -1259,37 +1352,59 @@ def main():
     if args.command is None:
         args.command = "list"
 
-    # Get the git directory from environment or config
-    git_dir = None
-
-    # Check for explicit git-dir in arguments (for list command)
-    if hasattr(args, "git_dir") and args.git_dir:
-        git_dir = args.git_dir
+    # Resolve git dir with new function; explicit arg for list only
+    if (
+        hasattr(args, "git_dir")
+        and args.command in ["list", "ls", "l"]
+        and args.git_dir
+    ):
+        explicit_arg = args.git_dir
     else:
-        # Use the common function to get the git dir
-        git_dir = get_git_dir()
+        explicit_arg = None
 
-    # If no git dir is available, show error and exit
+    git_dir, source, meta = get_git_dir_with_source(explicit_git_dir=explicit_arg)
+
     if not git_dir:
-        if HAS_TOML:
+        # Error message templates:
+        # E001: no repo detected and no valid fallbacks
+        # E002: env invalid
+        # E003: config invalid
+
+        if source == "env_invalid":
             print(
-                "Error: GWT_GIT_DIR environment variable is not set and no default repo is configured.",
+                f"Error [E002]: GWT_GIT_DIR points to an invalid git directory: {meta.get('env')}",
                 file=sys.stderr,
             )
             print(
-                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
-            )
-            print(
-                "Or configure a default repo in ~/.config/gwt/config.toml",
+                "hint: Ensure it points to a valid bare repo or to /path/to/repo/.git",
                 file=sys.stderr,
             )
-        else:
             print(
-                "Error: GWT_GIT_DIR environment variable is not set.", file=sys.stderr
+                "hint: Set with: export GWT_GIT_DIR=/path/to/repo/.git or run: gwt repo /path/to/repo.git",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if source == "config_invalid":
+            cfg_path = get_config_path()
+            print(
+                f"Error [E003]: default_repo in config is invalid: {meta.get('config')}",
+                file=sys.stderr,
             )
             print(
-                "Please set it with: gwt repo /path/to/your/repo.git", file=sys.stderr
+                "hint: Update it by running: gwt repo /path/to/repo.git",
+                file=sys.stderr,
             )
+            print(f"hint: Or edit config: {cfg_path}", file=sys.stderr)
+            sys.exit(1)
+
+        # No detection, no env/config
+        print(
+            "Error [E001]: No git repository detected here and no valid GWT_GIT_DIR or default_repo configured.",
+            file=sys.stderr,
+        )
+        print("hint: cd into any git repo; or", file=sys.stderr)
+        print("hint: set GWT_GIT_DIR=/path/to/repo/.git; or", file=sys.stderr)
+        print("hint: run: gwt repo /path/to/repo.git", file=sys.stderr)
         sys.exit(1)
     # Narrow type for static checkers
     assert git_dir is not None
@@ -1310,7 +1425,13 @@ def main():
         remove_worktree(args.branch_name, git_dir)
     elif args.command in ["list", "ls", "l"]:
         if hasattr(args, "branches") and args.branches:
-            list_all_branches(git_dir, mode=args.branches)
+            # Pass annotate flag down
+            annotate = getattr(args, "annotate", "none")
+            list_all_branches(
+                git_dir,
+                mode=args.branches,
+                annotate=annotate if annotate != "none" else None,
+            )
         else:
             list_worktrees(
                 git_dir,

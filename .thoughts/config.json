@@ -28,6 +28,7 @@
     "git@github.com:General-Wisdom/monorepo.git",
     "https://github.com/astral-sh/ty.git",
     "https://github.com/astral-sh/docs.git",
-    "https://github.com/astral-sh/ruff.git"
+    "https://github.com/astral-sh/ruff.git",
+    "git@github.com:allisoneer/agentic_auxilary.git"
   ]
 }

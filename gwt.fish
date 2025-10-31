@@ -79,9 +79,13 @@ function __gwt_complete
     
     # Complete second argument based on subcommand
     set -l subcmd $cmd[2]
+    set -l SCRIPT_DIR (dirname (status -f))
+    set -l PYTHON_SCRIPT "$SCRIPT_DIR/gwt.py"
     switch $subcmd
-        case switch s remove rm
-            __gwt_complete_branches
+        case switch s
+            $PYTHON_SCRIPT list --branches all --annotate fish 2>/dev/null
+        case remove rm
+            $PYTHON_SCRIPT list --branches worktrees --annotate fish 2>/dev/null
         case repo
             __fish_complete_directories
         case '*'

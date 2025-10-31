@@ -60,15 +60,20 @@ _gwt_completions() {
                 mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
                 return 0
                 ;;
-            switch|s|remove|rm)
-                # Capture the output of _gwt_get_branches to a variable
-                _gwt_get_branches_output=$(_gwt_get_branches)
-                    
-                # Only use the output if it's not empty
+            switch|s)
+                # All branches for switch
+                _gwt_get_branches_output=$("$PYTHON_SCRIPT" list --branches all --annotate bash 2>/dev/null)
                 if [ -n "$_gwt_get_branches_output" ]; then
-                    # Convert newlines to spaces for compgen
                     branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
-                    
+                    mapfile -t COMPREPLY < <(compgen -W "${branches}" -- "${cur}")
+                fi
+                return 0
+                ;;
+            remove|rm)
+                # Only worktrees (excluding main)
+                _gwt_get_branches_output=$("$PYTHON_SCRIPT" list --branches worktrees --annotate bash 2>/dev/null)
+                if [ -n "$_gwt_get_branches_output" ]; then
+                    branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
                     mapfile -t COMPREPLY < <(compgen -W "${branches}" -- "${cur}")
                 fi
                 return 0
@@ -90,6 +95,23 @@ _gwt_completions() {
 
 # Function to handle all gwt operations
 gwt() {
+    # Helper: strip leading icons (●, ○, ⊙) and spaces from a single token
+    _gwt_strip_visual() {
+        local arg="$1"
+        # Remove optional icon + space
+        arg="${arg/#● /}"
+        arg="${arg/#○ /}"
+        arg="${arg/#⊙ /}"
+        echo "$arg"
+    }
+
+    # Normalize the branch argument if present for switch/remove commands
+    if [[ "$1" == "remove" || "$1" == "rm" || "$1" == "switch" || "$1" == "s" ]]; then
+        if [[ $# -ge 2 ]]; then
+            set -- "$1" "$(_gwt_strip_visual "$2")" "${@:3}"
+        fi
+    fi
+
     # Check if this is an interactive command that shouldn't have output captured
     if [[ "$1" == "remove" || "$1" == "rm" ]]; then
         # Run interactively but capture the last line for potential cd command
