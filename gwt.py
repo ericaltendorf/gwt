@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.9"
+# requires-python = ">=3.10"
 # dependencies = [
 #   "tomli>=2.0.0; python_version < '3.11'",
 #   "tomli-w>=1.0.0",
