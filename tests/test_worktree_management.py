@@ -149,7 +149,7 @@ def test_list_worktrees_excludes_main(tmp_path):
             [sys.executable, str(gwt_script), "list", "--branches", "worktrees"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert res.returncode == 0
@@ -186,7 +186,7 @@ def test_list_worktrees_empty_when_none_exist(tmp_path):
             [sys.executable, str(gwt_script), "list", "--branches", "worktrees"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert res.returncode == 0

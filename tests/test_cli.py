@@ -65,7 +65,7 @@ def test_cli_list_branches_only_local(tmp_path):
             [sys.executable, str(gwt_script), "list", "--branches", "local"],
             env=env_vars,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 0
         # stdout prints branches
@@ -120,7 +120,7 @@ def test_cli_remove_flow(tmp_path):
             env=env_vars,
             input="n\n",
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 0
         assert "removed" in res.stdout or "removed" in res.stderr
@@ -148,7 +148,7 @@ def test_auto_detect_from_repo_root(tmp_path):
             [sys.executable, str(gwt_script), "list"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 0
     finally:
@@ -175,7 +175,7 @@ def test_auto_detect_from_subdirectory(tmp_path):
             [sys.executable, str(gwt_script), "list"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 0
     finally:
@@ -195,7 +195,7 @@ def test_auto_detect_priority_over_env(tmp_path):
     # Set env to repo B, but run from repo A
     env = {
         "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
-        "GWT_GIT_DIR": str(repo_b / ".git")
+        "GWT_GIT_DIR": str(repo_b / ".git"),
     }
 
     # Get absolute path to gwt.py
@@ -208,7 +208,7 @@ def test_auto_detect_priority_over_env(tmp_path):
             [sys.executable, str(gwt_script), "repo"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         # Should use repo A (auto-detected), not repo B (env)
         assert str(repo_a / ".git") in res.stdout or str(repo_a) in res.stdout
@@ -226,10 +226,7 @@ def test_fallback_to_env_outside_repo(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    env = {
-        "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
-        "GWT_GIT_DIR": str(repo / ".git")
-    }
+    env = {"XDG_CONFIG_HOME": str(tmp_path / "xdg"), "GWT_GIT_DIR": str(repo / ".git")}
 
     # Get absolute path to gwt.py
     gwt_script = Path(__file__).parent.parent / "gwt.py"
@@ -241,7 +238,7 @@ def test_fallback_to_env_outside_repo(tmp_path):
             [sys.executable, str(gwt_script), "list"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 0
     finally:
@@ -253,10 +250,7 @@ def test_error_when_env_invalid(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    env = {
-        "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
-        "GWT_GIT_DIR": "/nonexistent/path"
-    }
+    env = {"XDG_CONFIG_HOME": str(tmp_path / "xdg"), "GWT_GIT_DIR": "/nonexistent/path"}
 
     # Get absolute path to gwt.py
     gwt_script = Path(__file__).parent.parent / "gwt.py"
@@ -268,7 +262,7 @@ def test_error_when_env_invalid(tmp_path):
             [sys.executable, str(gwt_script), "list"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 1
         assert "E002" in res.stderr
@@ -294,7 +288,7 @@ def test_error_when_no_repo_found(tmp_path):
             [sys.executable, str(gwt_script), "list"],
             env=env,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert res.returncode == 1
         assert "E001" in res.stderr
@@ -326,10 +320,18 @@ def test_list_annotate_fish_format(tmp_path):
     try:
         os.chdir(outside)
         res = subprocess.run(
-            [sys.executable, str(gwt_script), "list", "--branches", "all", "--annotate", "fish"],
+            [
+                sys.executable,
+                str(gwt_script),
+                "list",
+                "--branches",
+                "all",
+                "--annotate",
+                "fish",
+            ],
             env=env_vars,
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert res.returncode == 0
@@ -369,10 +371,18 @@ def test_list_annotate_bash_format(tmp_path):
     try:
         os.chdir(outside)
         res = subprocess.run(
-            [sys.executable, str(gwt_script), "list", "--branches", "all", "--annotate", "bash"],
+            [
+                sys.executable,
+                str(gwt_script),
+                "list",
+                "--branches",
+                "all",
+                "--annotate",
+                "bash",
+            ],
             env=env_vars,
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert res.returncode == 0
@@ -408,7 +418,7 @@ def test_list_annotate_none_is_plain(tmp_path):
             [sys.executable, str(gwt_script), "list", "--branches", "all"],
             env=env_vars,
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert res.returncode == 0

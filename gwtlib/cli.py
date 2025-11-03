@@ -2,10 +2,11 @@
 import argparse
 import os
 import sys
-from gwtlib.config import HAS_TOML, load_config, save_config, get_config_path
+
+from gwtlib.config import HAS_TOML, get_config_path, load_config, save_config
+from gwtlib.display import list_all_branches, list_worktrees
 from gwtlib.resolution import get_git_dir, get_git_dir_with_source
-from gwtlib.worktrees import switch_branch, remove_worktree
-from gwtlib.display import list_worktrees, list_all_branches
+from gwtlib.worktrees import remove_worktree, switch_branch
 
 
 def main():

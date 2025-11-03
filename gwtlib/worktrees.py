@@ -4,11 +4,16 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
-from gwtlib.git_ops import run_git_command
+
+from gwtlib.branches import (
+    branch_exists_locally,
+    find_remote_branch,
+    get_main_branch_name,
+)
 from gwtlib.config import get_repo_config
-from gwtlib.paths import get_worktree_base, get_main_worktree_path
+from gwtlib.git_ops import run_git_command
 from gwtlib.parsing import get_worktree_list
-from gwtlib.branches import get_main_branch_name, branch_exists_locally, find_remote_branch
+from gwtlib.paths import get_main_worktree_path, get_worktree_base
 
 
 def create_worktree_for_branch(branch_name, git_dir, worktree_path):

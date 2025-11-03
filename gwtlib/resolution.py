@@ -1,11 +1,11 @@
 # gwtlib/resolution.py
 import os
 import subprocess
-import sys
 from typing import Optional
-from gwtlib.config import HAS_TOML, load_config, get_config_path
-from gwtlib.paths import _normalize_repo_path
+
+from gwtlib.config import HAS_TOML, load_config
 from gwtlib.git_ops import run_git_simple
+from gwtlib.paths import _normalize_repo_path
 
 
 def auto_detect_git_dir(cwd: Optional[str] = None) -> Optional[str]:

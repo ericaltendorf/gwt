@@ -1,6 +1,7 @@
 def test_public_api_re_exports():
     """Validate gwt.py re-exports all test-used functions."""
     import gwt
+
     assert callable(gwt.get_worktree_base)
     assert callable(gwt.get_main_worktree_path)
     assert callable(gwt.is_path_current_worktree)

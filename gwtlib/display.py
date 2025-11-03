@@ -3,9 +3,14 @@ import os
 import shutil
 import subprocess
 import sys
+
+from gwtlib.git_ops import run_git_command, run_git_in_worktree, run_git_quiet
+from gwtlib.parsing import (
+    get_worktree_list,
+    parse_worktree_legacy,
+    parse_worktree_porcelain,
+)
 from gwtlib.paths import is_path_current_worktree, rel_display_path
-from gwtlib.parsing import parse_worktree_porcelain, parse_worktree_legacy, get_worktree_list
-from gwtlib.git_ops import run_git_command, run_git_quiet, run_git_in_worktree
 
 
 class ColorMode:

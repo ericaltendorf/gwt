@@ -2,8 +2,9 @@
 import os
 import subprocess
 import sys
+
+from gwtlib.git_ops import run_git_in_worktree, run_git_quiet
 from gwtlib.paths import get_worktree_base
-from gwtlib.git_ops import run_git_quiet, run_git_in_worktree
 
 
 def parse_worktree_porcelain(git_dir, include_main=True):
