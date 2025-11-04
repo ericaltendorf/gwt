@@ -4,10 +4,11 @@ set -e
 
 # Default paths
 BIN_DIR="${HOME}/.local/bin"
+APPDIR="${XDG_DATA_HOME:-$HOME/.local/share}/gwt"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-# Create bin directory if it doesn't exist
-mkdir -p "$BIN_DIR"
+# Create directories
+mkdir -p "$BIN_DIR" "$APPDIR"
 
 # Check if ~/.local/bin is in PATH
 if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
@@ -26,30 +27,46 @@ echo "Detected shell: $USER_SHELL"
 
 # Check if uv is available
 if command -v uv >/dev/null 2>&1; then
-    echo "✓ Found uv - script will use isolated Python environment"
+    echo "✓ Found uv - will run gwt in an isolated environment"
 else
-    echo "ℹ uv not found - script will use system Python"
-    echo "  For better isolation, install uv: https://github.com/astral-sh/uv"
+    echo "ℹ uv not found - falling back to system Python (python3)"
+    echo "  For best performance and isolation, install uv: https://github.com/astral-sh/uv"
     echo ""
-    
+
     # Check for Python packages only if uv is not available
-    echo "Checking for required Python packages..."
+    echo "Checking for required Python packages (Python <3.11)..."
     if ! python3 -c "import tomli, tomli_w" 2>/dev/null; then
-        echo "  WARNING: Required packages 'tomli' and 'tomli-w' not installed"
-        echo "  Install them with: pip install tomli tomli-w"
+        echo "  WARNING: 'tomli' and 'tomli-w' not installed for system Python"
+        echo "  Install with: pip install tomli tomli-w"
         echo ""
     fi
 fi
 
-# Copy scripts to bin directory
-echo "Installing scripts to $BIN_DIR..."
-cp "$SCRIPT_DIR/gwt.py" "$BIN_DIR/gwt.py"
-chmod +x "$BIN_DIR/gwt.py"
+# Clean up old installation if present (gwt.py in ~/.local/bin from pre-AppDir versions)
+if [ -f "$BIN_DIR/gwt.py" ]; then
+    echo "Removing old gwt.py from $BIN_DIR (now using AppDir layout)..."
+    rm -f "$BIN_DIR/gwt.py"
+fi
 
+# Copy Python sources to AppDir
+echo "Installing core to $APPDIR..."
+# Ensure a clean package directory
+rm -rf "$APPDIR/gwtlib"
+cp "$SCRIPT_DIR/gwt.py" "$APPDIR/gwt.py"
+cp -r "$SCRIPT_DIR/gwtlib" "$APPDIR/gwtlib"
+chmod +x "$APPDIR/gwt.py"
+
+# Sanity check
+if [ ! -f "$APPDIR/gwt.py" ] || [ ! -d "$APPDIR/gwtlib" ]; then
+    echo "ERROR: Failed to install Python sources to $APPDIR" >&2
+    exit 1
+fi
+
+# Install wrappers to ~/.local/bin
+echo "Installing shell wrappers to $BIN_DIR..."
 cp "$SCRIPT_DIR/gwt.sh" "$BIN_DIR/gwt.sh"
 chmod +x "$BIN_DIR/gwt.sh"
 
-# Copy fish script if fish is detected
 if [ "$USER_SHELL" = "fish" ] || [ -d "$HOME/.config/fish" ]; then
     if [ -f "$SCRIPT_DIR/gwt.fish" ]; then
         cp "$SCRIPT_DIR/gwt.fish" "$BIN_DIR/gwt.fish"

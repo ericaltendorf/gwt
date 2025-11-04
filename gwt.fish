@@ -1,43 +1,61 @@
 #!/usr/bin/env fish
 # GWT Fish Shell Integration
 
+# Resolve AppDir per XDG, allow override via GWT_APPDIR
+function __gwt_appdir --description 'Compute gwt AppDir path'
+    if set -q GWT_APPDIR
+        echo $GWT_APPDIR
+        return
+    end
+    if set -q XDG_DATA_HOME
+        echo "$XDG_DATA_HOME/gwt"
+    else
+        echo "$HOME/.local/share/gwt"
+    end
+end
+
+function __gwt_py --description 'Path to gwt.py in AppDir'
+    set -l appdir (__gwt_appdir)
+    echo "$appdir/gwt.py"
+end
+
+# Runner that picks uv if available, else python3
+function __gwt_run --description 'Run gwt via uv or python3'
+    set -l PYTHON_SCRIPT (__gwt_py)
+    if not test -f "$PYTHON_SCRIPT"
+        echo "gwt: AppDir not found or incomplete at: "(__gwt_appdir) >&2
+        echo "Re-run ./install.sh to install gwt." >&2
+        return 1
+    end
+    if type -q uv
+        uv run --script "$PYTHON_SCRIPT" $argv
+    else
+        python3 "$PYTHON_SCRIPT" $argv
+    end
+end
+
 function gwt
-    # Use the Python script from the same directory
-    set -l SCRIPT_DIR (dirname (status -f))
-    set -l PYTHON_SCRIPT "$SCRIPT_DIR/gwt.py"
-    
-    # Check if this is an interactive command that shouldn't have output captured
+    # Interactive remove path
     if test "$argv[1]" = "remove" -o "$argv[1]" = "rm"
-        # Run interactively but capture output to check for cd command
-        # Use a temp file to capture output while still allowing interaction
         set -l tmpfile (mktemp)
-        $PYTHON_SCRIPT $argv | tee $tmpfile
+        __gwt_run $argv | tee $tmpfile
         set -l exit_code $status
         set -l last_line (tail -n1 $tmpfile)
         rm $tmpfile
-        
-        # Check if the last line is a cd command
+
         if string match -q "cd *" $last_line
             set -l dir (string replace "cd " "" $last_line)
-            cd $dir
-            or echo "Failed to change directory to $dir"
+            cd $dir; or echo "Failed to change directory to $dir"
         end
-        
         return $exit_code
     else
-        # Run the Python script and capture output for non-interactive commands
-        # Don't redirect stderr to stdout - let error messages go to the terminal
-        set -l output ($PYTHON_SCRIPT $argv)
+        set -l output (__gwt_run $argv)
         set -l exit_code $status
-        
-        # Parse output for special commands
+
         if string match -q "cd *" $output
-            # Extract directory and change to it
             set -l dir (string replace "cd " "" $output)
-            cd $dir
-            or echo "Failed to change directory to $dir"
+            cd $dir; or echo "Failed to change directory to $dir"
         else if string match -q "GWT_GIT_DIR=*" $output
-            # Extract git directory and set it
             set -l dir (string replace "GWT_GIT_DIR=" "" $output)
             if test -d $dir
                 set -gx GWT_GIT_DIR $dir
@@ -47,45 +65,34 @@ function gwt
                 return 1
             end
         else
-            # Just print the output
             echo $output
         end
-        
         return $exit_code
     end
 end
 
-# Tab completion for gwt
+# Completion helpers use __gwt_run
 function __gwt_complete_branches
-    set -l SCRIPT_DIR (dirname (status -f))
-    set -l PYTHON_SCRIPT "$SCRIPT_DIR/gwt.py"
-    # Try all branches first, fallback to worktrees
-    $PYTHON_SCRIPT list --branches all 2>/dev/null
-    or $PYTHON_SCRIPT list --branches worktrees 2>/dev/null
+    __gwt_run list --branches all 2>/dev/null
+    or __gwt_run list --branches worktrees 2>/dev/null
 end
 
 function __gwt_complete
     set -l cmd (commandline -opc)
     set -l cur (commandline -ct)
-    
-    # Commands
     set -l commands repo switch s list ls l remove rm
-    
-    # Complete first argument with commands
+
     if test (count $cmd) -eq 1
         printf '%s\n' $commands
         return
     end
-    
-    # Complete second argument based on subcommand
+
     set -l subcmd $cmd[2]
-    set -l SCRIPT_DIR (dirname (status -f))
-    set -l PYTHON_SCRIPT "$SCRIPT_DIR/gwt.py"
     switch $subcmd
         case switch s
-            $PYTHON_SCRIPT list --branches all --annotate fish 2>/dev/null
+            __gwt_run list --branches all --annotate fish 2>/dev/null
         case remove rm
-            $PYTHON_SCRIPT list --branches worktrees --annotate fish 2>/dev/null
+            __gwt_run list --branches worktrees --annotate fish 2>/dev/null
         case repo
             __fish_complete_directories
         case '*'

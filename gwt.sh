@@ -1,45 +1,61 @@
 #!/usr/bin/env bash
 
-# Get the absolute path of the script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-PYTHON_SCRIPT="$SCRIPT_DIR/gwt.py"
+# Resolve AppDir per XDG, allow override via GWT_APPDIR
+APPDIR="${GWT_APPDIR:-${XDG_DATA_HOME:-$HOME/.local/share}/gwt}"
+PYTHON_SCRIPT="$APPDIR/gwt.py"
 
-# Verify Python script exists and is executable
-if [ ! -f "$PYTHON_SCRIPT" ]; then
-    echo "Error: Python script not found at $PYTHON_SCRIPT" >&2
-    echo "This could happen if the script was moved or renamed." >&2
-    echo "Verify that the script is installed correctly." >&2
-    # shellcheck disable=SC2317
-    return 1 2>/dev/null || exit 1
+# Select runner: uv (preferred) or python3 fallback
+_gwt_init_runner() {
+    if command -v uv >/dev/null 2>&1; then
+        # We'll call: uv run --script "$PYTHON_SCRIPT" ...
+        GWT_CMD=(uv run --script "$PYTHON_SCRIPT")
+    else
+        GWT_CMD=(python3 "$PYTHON_SCRIPT")
+    fi
+}
+_gwt_init_runner
+
+# Runner helper
+_gwt_run() {
+    "${GWT_CMD[@]}" "$@"
+}
+
+# Zsh compatibility: enable bash-style completion if under zsh
+if [ -n "${ZSH_VERSION:-}" ]; then
+    autoload -Uz bashcompinit 2>/dev/null || true
+    bashcompinit 2>/dev/null || true
 fi
 
-if [ ! -x "$PYTHON_SCRIPT" ]; then
-    echo "Warning: Python script is not executable. Fixing permissions..." >&2
-    chmod +x "$PYTHON_SCRIPT"
+# Verify Python script exists
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+    echo "gwt: AppDir not found or incomplete at: $APPDIR" >&2
+    echo "Re-run ./install.sh to install gwt." >&2
+    # shellcheck disable=SC2317
+    return 1 2>/dev/null || exit 1
 fi
 
 _gwt_get_branches() {
     # Function to get list of branch names
     # Default to "all" branches for comprehensive completion
-    output=$("$PYTHON_SCRIPT" list --branches all 2>&1)
+    local output result
+    output=$(_gwt_run list --branches all 2>&1)
     result=$?
-    
+
     if [ $result -eq 0 ]; then
         echo "$output"
     else
         # Fallback to worktrees only if all branches fails
-        output=$("$PYTHON_SCRIPT" list --branches worktrees 2>&1)
-        echo "$output"
+        _gwt_run list --branches worktrees 2>/dev/null || true
     fi
 }
 
 _gwt_completions() {
-    local cur prev commands
+    local cur prev commands branches _gwt_get_branches_output
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     commands="repo switch s list ls l remove rm"
-    
+
     # Don't use file completion as a fallback
     compopt -o nospace
 
@@ -62,7 +78,7 @@ _gwt_completions() {
                 ;;
             switch|s)
                 # All branches for switch
-                _gwt_get_branches_output=$("$PYTHON_SCRIPT" list --branches all --annotate bash 2>/dev/null)
+                _gwt_get_branches_output=$(_gwt_run list --branches all --annotate bash 2>/dev/null)
                 if [ -n "$_gwt_get_branches_output" ]; then
                     branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
                     mapfile -t COMPREPLY < <(compgen -W "${branches}" -- "${cur}")
@@ -71,7 +87,7 @@ _gwt_completions() {
                 ;;
             remove|rm)
                 # Only worktrees (excluding main)
-                _gwt_get_branches_output=$("$PYTHON_SCRIPT" list --branches worktrees --annotate bash 2>/dev/null)
+                _gwt_get_branches_output=$(_gwt_run list --branches worktrees --annotate bash 2>/dev/null)
                 if [ -n "$_gwt_get_branches_output" ]; then
                     branches=$(echo "$_gwt_get_branches_output" | tr '\n' ' ')
                     mapfile -t COMPREPLY < <(compgen -W "${branches}" -- "${cur}")
@@ -116,13 +132,12 @@ gwt() {
     if [[ "$1" == "remove" || "$1" == "rm" ]]; then
         # Run interactively but capture the last line for potential cd command
         # Use a temp file to capture output while still allowing interaction
-        local tmpfile
+        local tmpfile last_line
         tmpfile=$(mktemp)
-        "$PYTHON_SCRIPT" "$@" | tee "$tmpfile"
-        local last_line
+        _gwt_run "$@" | tee "$tmpfile"
         last_line=$(tail -n1 "$tmpfile")
         rm "$tmpfile"
-        
+
         # Check if the last line is a cd command
         if [[ "$last_line" == cd* ]]; then
             local dir="${last_line#cd }"
@@ -131,8 +146,8 @@ gwt() {
     else
         # Run the Python script and capture output for non-interactive commands
         local output
-        output=$("$PYTHON_SCRIPT" "$@")
-        
+        output=$(_gwt_run "$@")
+
         # Parse the output for special commands
         if [[ "$output" == cd* ]]; then
             # Extract the directory path and change to it
