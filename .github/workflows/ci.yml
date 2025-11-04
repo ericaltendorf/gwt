@@ -6,24 +6,112 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  CI: true
+  OUTPUT_MODE: normal
+
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    name: Lint / Format / Type-check
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8
-    - name: Lint with flake8
-      run: |
-        flake8 gwt.py --count --select=E9,F63,F7,F82 --show-source --statistics
-    - name: Check shell scripts
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y shellcheck
-        shellcheck gwt.sh install.sh
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (3.12 for tooling)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Format check
+        run: just fmt-check
+
+      - name: Lint
+        run: just lint
+
+      - name: Type-check (non-blocking)
+        run: just type-check
+
+  test:
+    name: Test (pytest matrix)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Run tests
+        run: just test
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils
+
+      - name: Install ShellCheck 0.11.0
+        run: |
+          set -euo pipefail
+          sc_ver="v0.11.0"
+          curl -sSL -o /tmp/sc.tar.xz "https://github.com/koalaman/shellcheck/releases/download/${sc_ver}/shellcheck-${sc_ver}.linux.x86_64.tar.xz"
+          tar -C /tmp -xf /tmp/sc.tar.xz
+          sudo mv "/tmp/shellcheck-${sc_ver}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Run ShellCheck via just
+        run: just check-shell
+
+  build:
+    name: Build and validate
+    runs-on: ubuntu-24.04
+    needs: [lint, test, shellcheck]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (3.12)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Build + smoke test (via just)
+        run: just build-validate

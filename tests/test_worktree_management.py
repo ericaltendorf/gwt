@@ -114,3 +114,82 @@ def test_branch_exists_locally_and_worktree_listing(tmp_path):
     wts = gwt.get_worktree_list(git_dir, include_main=False)
     branches = {w["branch"] for w in wts}
     assert "feature" in branches
+
+
+def test_list_worktrees_excludes_main(tmp_path):
+    """Test that list --branches worktrees excludes main branch."""
+    import sys
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    git_dir = str(repo / ".git")
+
+    # Create a worktree branch
+    subprocess.run(["git", "-C", str(repo), "branch", "feature"], check=True)
+
+    wt_base = gwt.get_worktree_base(git_dir)
+    wt_path = os.path.join(wt_base, "feature")
+    gwt.create_worktree_for_branch("feature", git_dir, wt_path)
+
+    # Run from outside any git repo to avoid auto-detection interference
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    # Get absolute path to gwt.py
+    gwt_script = Path(__file__).parent.parent / "gwt.py"
+    env = os.environ.copy()
+    env["GWT_GIT_DIR"] = git_dir
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+
+    original_dir = os.getcwd()
+    try:
+        os.chdir(outside)
+        res = subprocess.run(
+            [sys.executable, str(gwt_script), "list", "--branches", "worktrees"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert res.returncode == 0
+        lines = res.stdout.strip().split('\n') if res.stdout.strip() else []
+        assert "feature" in lines
+        assert "main" not in lines  # Main should be excluded
+    finally:
+        os.chdir(original_dir)
+
+
+def test_list_worktrees_empty_when_none_exist(tmp_path):
+    """Test that list --branches worktrees returns empty when no worktrees."""
+    import sys
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    git_dir = str(repo / ".git")
+
+    # Run from outside any git repo to avoid auto-detection interference
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    # Get absolute path to gwt.py
+    gwt_script = Path(__file__).parent.parent / "gwt.py"
+    env = os.environ.copy()
+    env["GWT_GIT_DIR"] = git_dir
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+
+    original_dir = os.getcwd()
+    try:
+        os.chdir(outside)
+        res = subprocess.run(
+            [sys.executable, str(gwt_script), "list", "--branches", "worktrees"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert res.returncode == 0
+        assert res.stdout.strip() == ""  # Empty output
+    finally:
+        os.chdir(original_dir)

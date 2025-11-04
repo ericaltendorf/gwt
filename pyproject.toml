@@ -1,6 +1,6 @@
 # Tooling-only configuration; runtime deps remain as PEP 723 inline metadata in gwt.py
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 exclude = [
   "dist",
   ".venv",

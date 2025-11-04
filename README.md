@@ -76,9 +76,14 @@ Run the installation script:
 ```
 
 This will:
-1. Copy the scripts to your `~/.local/bin/` directory
-2. Ask for an optional default GWT_GIT_DIR
-3. Add the necessary lines to your `~/.bashrc`
+1. Install gwt.py and gwtlib/ to your AppDir: `$XDG_DATA_HOME/gwt` or `~/.local/share/gwt`
+2. Install shell wrappers to `~/.local/bin` and add sourcing lines to your shell config
+3. Ask for an optional default GWT_GIT_DIR
+
+**uv vs python3:**
+- gwt prefers running via `uv run --script` for isolation and speed.
+- If uv is not available, gwt falls back to `python3`. On Python <3.11 you may need:
+  `pip install tomli tomli-w`.
 
 Then reload your shell:
 ```bash
@@ -89,31 +94,45 @@ source ~/.bashrc
 
 If you prefer to install manually:
 
-1. Make sure Python 3.6+ is installed on your system
+1. Make sure Python 3.11+ is installed (or Python 3.6+ with `tomli` and `tomli-w` packages)
 
-2. Install required Python packages:
+2. Create AppDir and copy Python sources:
    ```bash
-   pip install tomli tomli-w
+   mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/gwt"
+   cp gwt.py "${XDG_DATA_HOME:-$HOME/.local/share}/gwt/gwt.py"
+   cp -r gwtlib "${XDG_DATA_HOME:-$HOME/.local/share}/gwt/gwtlib"
    ```
 
-3. Copy the scripts to a directory in your PATH:
+3. Install wrappers:
    ```bash
    mkdir -p ~/.local/bin
-   cp gwt.py gwt.sh ~/.local/bin/
-   chmod +x ~/.local/bin/gwt.py ~/.local/bin/gwt.sh
+   cp gwt.sh ~/.local/bin/
+   [ -f gwt.fish ] && cp gwt.fish ~/.local/bin/
    ```
 
-3. Add to your `~/.bashrc`:
+4. Add to your shell config (bash/zsh):
    ```bash
    # GWT setup
    source ~/.local/bin/gwt.sh
    export GWT_GIT_DIR=/path/to/your/repo.git  # Optional default
    ```
 
-4. Reload your shell:
-   ```bash
-   source ~/.bashrc
+   For fish:
+   ```fish
+   # GWT setup
+   source ~/.local/bin/gwt.fish
+   set -gx GWT_GIT_DIR /path/to/your/repo.git  # Optional default
    ```
+
+5. Reload your shell:
+   ```bash
+   source ~/.bashrc  # or source ~/.zshrc, or source ~/.config/fish/config.fish
+   ```
+
+**Uninstall:**
+- Remove AppDir: `rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/gwt"`
+- Remove wrappers: `rm -f ~/.local/bin/gwt.{sh,fish}`
+- Remove sourcing lines from your shell config
 
 ## Configuration
 
